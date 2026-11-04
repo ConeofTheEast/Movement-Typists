@@ -565,3 +565,28 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
   .ws-launch { padding: 0.65em 0.9em; font-size: 0.9em !important; letter-spacing: 0.06em; }
   .ws-hint, .ws-next kbd { display: none; }
 }
+
+/* ===== Drone Defense (js/transverse.js) ===== */
+#workshop { position: absolute; inset: 0; z-index: 40; }
+#hud.drone .progress, #hud.drone #hud-stats, #hud.drone #energy { display: none; }
+#hud.drone .hud-top { justify-content: flex-end; top: 0.5em; right: 0.6em; }
+#hud.drone #plane-tag { top: auto; bottom: 12.6em; font-size: 0.82em; }
+#decision.dd { left: 1em; right: auto; top: 4.4em; bottom: auto; transform: none; width: 24em; padding: 0.8em 1em 0.8em; animation: rise-l 0.25s ease-out; }
+#decision.dd.dd-right { left: auto; right: 1em; animation: rise-r 0.25s ease-out; }
+@keyframes rise-l { from { transform: translateX(-1em); opacity: 0; } to { transform: none; opacity: 1; } }
+#decision.dd .d-row { flex-direction: column; gap: 0.25em; }
+#decision.dd #d-title { font-size: 0.85em; }
+#decision.dd #d-prompt { font-size: 1.12em; line-height: 1.38; margin: 0.5em 0 0.75em; }
+#decision.dd #d-options { grid-template-columns: 1fr; gap: 0.45em; }
+#decision.dd .opt { font-size: 1.12em; padding: 0.62em 0.75em; }
+#decision.dd .d-timer { margin-top: 1.6em; }
+#decision.notimer .d-timer { display: none; }
+#decision.jam { border-color: var(--amber); animation: dd-shake 0.35s; }
+#decision.jam #d-prompt { color: var(--amber); }
+#decision .opt:disabled { opacity: 0.4; }
+@keyframes dd-shake { 0%, 100% { transform: none; } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+@media (prefers-reduced-motion: reduce) { #decision.jam { animation: none; } }
+#toast.left { right: auto; left: 1.2em; top: 4.6em; }
+#ddcard .panel { width: 46em; }
+#ddcard .stats b { font-size: 1.35em; }
+.lv-best { font: 800 0.65em ui-monospace, monospace; letter-spacing: 0.12em; color: var(--amber); align-self: center; }
