@@ -34,6 +34,11 @@
   }
 
   function form() { return parseLink(SEHS.FEEDBACK_FORM_LINK); }
+  // A form link without entry ids: open it in a new tab after copying the text.
+  function plainForm() {
+    const l = SEHS.FEEDBACK_FORM_LINK || '';
+    return !form() && /^https:\/\/(docs\.google\.com\/forms\/|forms\.gle\/)/.test(l) ? l : null;
+  }
 
   function post(f, item) {
     const body = new URLSearchParams();
@@ -64,6 +69,7 @@
     const old = document.getElementById('feedback-box');
     if (old) old.remove();
     const f = form();
+    const plain = plainForm();
     const wrap = document.createElement('div');
     wrap.id = 'feedback-box';
     wrap.className = 'screen';
@@ -80,7 +86,7 @@
       <div id="fb-msg" class="dim" aria-live="polite"></div>
       <div class="row">
         <button class="ghost" data-act="close">Close</button>
-        <button class="primary" data-act="send">${f ? 'Send ▶' : 'Copy text 📋'}</button>
+        <button class="primary" data-act="send">${f ? 'Send ▶' : plain ? 'Copy &amp; open form ▶' : 'Copy text 📋'}</button>
       </div></div>`;
     (document.getElementById('stage') || document.body).appendChild(wrap);
     const $ = (s) => wrap.querySelector(s);
@@ -100,6 +106,11 @@
         const blob = `Kinetic Escape feedback\nName: ${name || '-'}\nGame: ${game}\n\n${text}`;
         let ok = false;
         try { await navigator.clipboard.writeText(blob); ok = true; } catch (e) { ok = false; }
+        if (plain) {
+          window.open(plain, '_blank', 'noopener');
+          msg.textContent = ok ? 'Copied! The form opened in a new tab: paste (Ctrl+V) into it and press Submit.' : 'The form opened in a new tab. Copy your text above (Ctrl+C), paste it there and press Submit.';
+          return;
+        }
         msg.textContent = ok ? 'Copied! Paste it where your teacher asked (e.g. Google Classroom).' : 'Select the text above and copy it (Ctrl+C) to send to your teacher.';
         return;
       }
