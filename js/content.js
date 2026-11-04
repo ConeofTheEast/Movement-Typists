@@ -427,6 +427,7 @@
               headline: 'JOINTS MOVED: DOOR CAME DOWN',
               explain: 'Isotonic is the umbrella name for contractions where the muscle CHANGES LENGTH: concentric (shortening) and eccentric (lengthening). Either way the elbows and knees moved, so the door shifted and slammed down on the android. The door needs an ISOMETRIC contraction: the triceps, anterior deltoid, quadriceps and gluteus maximus make force with no change in length.',
               fatal: true,
+              as: 'Concentric',
             },
           },
           timeout: {
