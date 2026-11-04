@@ -14,7 +14,7 @@
   const stage = $('stage');
 
   // ---------------- settings ----------------
-  const settings = { sound: true, reduce: false, labels: false };
+  const settings = { sound: true, reduce: false, labels: false, practice: false };
   try {
     const s = JSON.parse(localStorage.getItem('kinetic-escape-settings') || '{}');
     Object.assign(settings, s);
@@ -94,6 +94,7 @@
 
     showFail(info, stats) {
       this.hide('toast');
+      $('fail').classList.remove('dd'); $('btn-more').classList.add('hidden'); $('f-more').classList.add('hidden'); $('f-more').innerHTML = '';
       const st = info.st;
       const s = st.success;
       const con = C.CONTRACTIONS[s.contraction];
@@ -136,9 +137,18 @@
       const DU = C.DRONE_UI.card;
       $('f-head').textContent = info.kind === 'plane' ? DU.planeTitle : info.kind === 'timeout' && info.headline !== DU.timeoutTitle ? `${DU.timeoutTitle}: ${info.headline}` : info.headline;
       $('f-choice').textContent = info.choice + (info.shownAs ? ` (shown as ${info.shownAs})` : '');
-      $('f-explain').textContent = info.explain;
+      // default card stays short (<= ~60 words); the rest sits behind More (M)
+      const sent = String(info.explain).match(/[^.!?]+[.!?]+(\s|$)/g) || [info.explain];
+      let head = '', rest = '';
+      sent.forEach((x) => { if ((head + x).split(/\s+/).length <= 42 || !head) head += x; else rest += x; });
+      $('f-explain').textContent = head.trim();
       const names = s.agonists.map((id) => (C.MUSCLES[id] ? C.MUSCLES[id].name : id)).join(', ');
-      $('f-correct').innerHTML = `<b>${st.correct}</b>: ${s.detail}${s.deeper ? `<br><span class="dim">${s.deeper}</span>` : ''}<br><span class="dim">${st.kind === 'movement' ? `${pl.name} · axis: ${C.axisAllNames('transverse')}` : con.def}</span><br><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${C.contractionLabel(s.contraction).toLowerCase()}`;
+      $('f-correct').innerHTML = `<b>${st.correct}</b><br><span class="dim">${st.kind === 'movement' ? `${pl.name} · axis: ${C.axisAllNames('transverse')}` : con.def}</span>`;
+      $('f-more').innerHTML = `${rest ? `<p>${rest.trim()}</p>` : ''}<p>${s.detail}</p>${s.deeper ? `<p class="dim">${s.deeper}</p>` : ''}<p><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${C.contractionLabel(s.contraction).toLowerCase()}</p>`;
+      $('f-more').classList.add('hidden');
+      $('btn-more').classList.remove('hidden');
+      $('btn-more').textContent = 'More (M)';
+      $('fail').classList.add('dd');
       const fail = $('fail');
       fail.classList.toggle('plane', info.kind === 'plane');
       fail.classList.toggle('partial', !info.shutdown);
@@ -146,12 +156,12 @@
       const en = `${info.energy}/${info.max}`;
       if (info.shutdown) {
         $('f-kicker').textContent = `${C.DRONE_UI.wave.shutdown} · ENERGY 0/${info.max}`;
-        $('f-cost').textContent = `Energy ran out, so the android shut down. Watch the replay, then the wave restarts with full energy. ${DU.reask}`;
+        $('f-cost').textContent = 'Energy 0: the android shut down. Replay, then the wave restarts.';
         $('btn-retry').textContent = 'Replay, then restart wave (Enter)';
       } else {
         const ally = info.damage === 'ally' && info.allyName;
         $('f-kicker').textContent = info.kind === 'plane' ? 'MALFUNCTION · −1 ENERGY' : ally ? `${C.DRONE_UI.card.allyHit.replace('{name}', info.allyName)} · CUT THEM FREE!` : info.kind === 'timeout' ? `${DU.timeoutTitle} · −1 ENERGY` : 'PART DAMAGED · −1 ENERGY';
-        $('f-cost').textContent = `${ally ? `${info.allyName} is being towed away: click them or press R to cut the net (+1 energy). ` : ''}Energy ${en}. ${DU.reask}`;
+        $('f-cost').textContent = `${ally ? `${info.allyName} is being towed: click them or press R to cut the net. ` : ''}Energy ${en} · this action comes back later.`;
         $('btn-retry').textContent = 'Watch the replay ▶ (Enter)';
       }
       clearTimeout(this._ft);
@@ -255,7 +265,8 @@
     if (this._ax !== key) { this._ax = key; $('plane-tag').innerHTML = `<b>TRANSVERSE PLANE</b> · <span class="ax">${jam ? ax.replace(/[aeiou]/g, '#') : ax}</span> ⊙`; }
     const list = $('monitor-list');
     if (level.jammed()) { list.innerHTML = `<li class="jam">${level.mode === 'decide' ? 'SENSORS JAMMED: YOU DECIDE' : 'SENSORS JAMMED'}</li>`; return; }
-    const act = level.rig.activeList(0.25).slice(0, 6);
+    // during the ghost replay the monitor shows the CORRECT action's muscles
+    const act = (level.mode === 'replay' && level.ghostRig ? level.ghostRig : level.rig).activeList(0.25).slice(0, 6);
     list.innerHTML = act.length
       ? act.map((m) => {
         const con = C.CONTRACTION_BY_ID[m.mode];
@@ -273,6 +284,7 @@
     level: null,
     paused: false,
   };
+  game.settings = settings; // read by levels (e.g. Drone Defense practice mode)
   window.game = game; // handy for debugging / automated playtests
 
   if (SEHS.Sprites) SEHS.Sprites.load('sagittal');
@@ -293,6 +305,11 @@
         const sv = SEHS.DroneDefense.SaveIO.load();
         if (sv.wave > 1) { playLbl = `Continue (wave ${sv.wave}) ▶`; extra = '<button class="ghost small" data-act="fresh">New defense</button>'; }
         if (sv.bestWave) extra += `<div class="lv-best">BEST WAVE ${sv.bestWave}</div>`;
+        const P = SEHS.Progress;
+        if (P) {
+          if (P.openCodex) extra += '<button class="ghost small" data-act="codex">📖 Codex</button>';
+          if (P.openReport) extra += '<button class="ghost small" data-act="report">📊 Report</button>';
+        }
       }
       card.innerHTML = `<div class="badge">${badge}</div><div class="lv-plane">${lv.tag}</div><h3>${lv.title}</h3><p>${lv.blurb}</p>
         <div class="lv-btns"><button class="ghost small" data-act="tut">📘 Tutorial</button>${lv.status === 'playable' ? `<button class="primary small" data-act="play">${playLbl}</button>` : ''}</div>${extra ? `<div class="lv-btns">${extra}</div>` : ''}`;
@@ -301,11 +318,34 @@
       if (pb) pb.addEventListener('click', () => { Audio.init(); openTutorial(lv.id, true); });
       const fb = card.querySelector('[data-act="fresh"]');
       if (fb) fb.addEventListener('click', () => { if (window.confirm('Start a new defense from wave 1? Scrap and upgrades reset; your Fault Log and Calibration are kept.')) { Audio.init(); openTutorial(lv.id, true, { fresh: true }); } });
+      const cb = card.querySelector('[data-act="codex"]');
+      if (cb) cb.addEventListener('click', () => openProgress('openCodex', false));
+      const rb = card.querySelector('[data-act="report"]');
+      if (rb) rb.addEventListener('click', () => openProgress('openReport', false));
+      if (lv.id === 'transverse' && SEHS.Progress && SEHS.Progress.setSeed) {
+        const ST = C.SEED_TEXT || {};
+        const row = document.createElement('div');
+        row.className = 'lv-seed';
+        const cur = SEHS.Progress.getSeed ? SEHS.Progress.getSeed() : '';
+        row.innerHTML = `<label>${ST.prompt || 'Class seed (optional):'} <input type="text" maxlength="16" placeholder="${ST.placeholder || ''}" value="${cur || ''}" title="${ST.help || ''}"></label><button class="ghost small">${ST.apply || 'Apply seed'}</button><span class="dim"></span>`;
+        const inp = row.querySelector('input'), msg = row.querySelector('span');
+        row.querySelector('button').addEventListener('click', () => {
+          const v = inp.value.trim();
+          if (v && !/^[A-Za-z0-9-]{1,16}$/.test(v)) { msg.textContent = ST.invalid || 'Letters, numbers and dashes only.'; return; }
+          let r;
+          try { r = SEHS.Progress.setSeed(v); } catch (err) { r = false; }
+          msg.textContent = r === false ? (ST.invalid || 'Invalid seed') : v ? (ST.active || 'Seed: {seed}').replace('{seed}', v) : (ST.none || 'No seed');
+        });
+        inp.addEventListener('keydown', (e) => e.stopPropagation());
+        card.appendChild(row);
+      }
       box.appendChild(card);
     });
     $('opt-sound').checked = settings.sound;
     $('opt-reduce').checked = settings.reduce;
     $('opt-labels').checked = settings.labels;
+    $('opt-practice').checked = !!settings.practice;
+    $('pause-practice').checked = !!settings.practice;
   }
 
   // The tutorial / review section runs at the outset of every game.
@@ -337,7 +377,7 @@
 
   function toMenu() {
     clearTimeout(ui._ft); // a pending fail card must not pop up over the menu
-    ['fail', 'win', 'pause', 'hud', 'decision', 'toast', 'tutorial', 'ddcard', 'workshop'].forEach((id) => ui.hide(id));
+    ['fail', 'win', 'pause', 'hud', 'decision', 'toast', 'tutorial', 'ddcard', 'workshop', 'progress-root'].forEach((id) => ui.hide(id));
     if (game.level && game.level.destroy) game.level.destroy();
     if (game.level && game.level.wsHandle) { try { game.level.wsHandle.close(); } catch (e) { /* ignore */ } }
     $('hud').classList.remove('drone');
@@ -353,6 +393,10 @@
   function togglePause() {
     if (game.state !== 'play') return;
     game.paused = !game.paused;
+    $('pause-dd').classList.toggle('hidden', !(game.level && game.level.kind === 'drone'));
+    const hasP = !!(SEHS.Progress && SEHS.Progress.openCodex);
+    $('btn-pause-codex').classList.toggle('hidden', !hasP);
+    $('btn-pause-report').classList.toggle('hidden', !(SEHS.Progress && SEHS.Progress.openReport));
     game.paused ? ui.show('pause') : ui.hide('pause');
   }
 
@@ -370,6 +414,31 @@
     game.state = 'play';
   }
   $('btn-retry').addEventListener('click', retry);
+  function toggleMore() {
+    const m = $('f-more');
+    m.classList.toggle('hidden');
+    $('btn-more').textContent = m.classList.contains('hidden') ? 'More (M)' : 'Less (M)';
+  }
+  $('btn-more').addEventListener('click', toggleMore);
+  // practice mode (Drone Defense): untimed freezes, logged as assist
+  function setPractice(v) { settings.practice = !!v; $('opt-practice').checked = settings.practice; $('pause-practice').checked = settings.practice; saveSettings(); }
+  $('opt-practice').addEventListener('change', (e) => setPractice(e.target.checked));
+  $('pause-practice').addEventListener('change', (e) => setPractice(e.target.checked));
+  // js/progress.js overlays (guarded: the file may be absent)
+  function openProgress(fn, fromPause) {
+    const P = SEHS.Progress;
+    if (!P || typeof P[fn] !== 'function') return;
+    const root = $('progress-root');
+    root.classList.remove('hidden');
+    if (fromPause) ui.hide('pause');
+    const prev = game.state;
+    game.state = 'workshop'; // overlay has keyboard focus
+    try {
+      P[fn](root, { onClose: () => { root.classList.add('hidden'); root.innerHTML = ''; game.state = prev; if (fromPause) ui.show('pause'); } });
+    } catch (err) { console.warn('Progress.' + fn, err); root.classList.add('hidden'); game.state = prev; if (fromPause) ui.show('pause'); }
+  }
+  $('btn-pause-codex').addEventListener('click', () => openProgress('openCodex', true));
+  $('btn-pause-report').addEventListener('click', () => openProgress('openReport', true));
   $('btn-fail-menu').addEventListener('click', toMenu);
   $('btn-again').addEventListener('click', startLevel);
   $('btn-win-menu').addEventListener('click', toMenu);
@@ -391,6 +460,7 @@
     if (game.state === 'play' && !game.paused && lvl.onKey && $('fail').classList.contains('hidden') && lvl.onKey(e)) { e.preventDefault(); return; }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') togglePause();
     if (e.key === 'l' || e.key === 'L') { settings.labels = !settings.labels; $('opt-labels').checked = settings.labels; saveSettings(); }
+    if ((e.key === 'm' || e.key === 'M') && $('fail').classList.contains('dd') && !$('fail').classList.contains('hidden')) { toggleMore(); return; }
     if (e.key === 'm' || e.key === 'M') { settings.sound = !settings.sound; $('opt-sound').checked = settings.sound; Audio.setMuted(!settings.sound); saveSettings(); }
     if (e.key === 'Enter' && game.state === 'menu') { Audio.init(); openTutorial('sagittal', true); }
     if ((e.key === 'r' || e.key === 'R' || e.key === 'Enter') && !$('fail').classList.contains('hidden')) { e.preventDefault(); retry(); }

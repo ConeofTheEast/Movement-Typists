@@ -154,7 +154,7 @@
     discSnap: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR', elite: true, inset: 'elbowR', insetLabel: 'RIGHT ARM' },
     tetherPull: { type: 'tether', th: 95, d: 210, ally: { prefer: 'bolt', side: 'R', at: [125, 150], helper: true }, joints: ['shoulderR'], key: 'R.rot', side: 'left', limbPt: 'wristR' },
     heavyCatch: { type: 'heavy', th: 15, d: 100, joints: ['shoulderR'], key: 'R.hz', side: 'left', limbPt: 'handR' },
-    hipPivot: { type: 'crawler', th: 60, d: 70, joints: ['hipR'], key: 'hipR', side: 'left', limbPt: 'toeR', zoomOn: 'feet' },
+    hipPivot: { type: 'crawler', th: 60, d: 70, joints: ['hipR'], key: 'hipR', side: 'left', limbPt: 'toeR', zoomOn: 'feet', inset: 'footR', insetLabel: 'FEET' },
   };
   // which threats a drone's trigger can serve (§4.4c trigger column)
   function compatible(type, th, ally) {
@@ -175,6 +175,16 @@
   const WARDEN_PHASES = [['diveBehind', 'crossSwat'], ['tetherPull', 'discThrow'], ['palmShield', 'spineTwist']];
   const WARDEN_SUB = { crossSwat: 'heavyCatch', discThrow: 'discSnap', spineTwist: 'hipPivot' };
   const PLATE_NAMES = ['FRONT', 'LEFT', 'RIGHT'];
+
+  // HUD zones in world space (base camera): top bar, monitor (bottom-left), roster (bottom-right)
+  function clearOfHud(x, y) {
+    x = clamp(x, 40, W - 40); y = Math.max(y, 96);
+    if (y > 500 && x < 330) { if (330 - x < y - 500) x = 330; else y = 500; }
+    if (y > 470 && x > 1010) { if (x - 1010 < y - 470) x = 1010; else y = 470; }
+    return [x, Math.min(y, H - 40)];
+  }
+
+  const fmtCells = (n) => (n === 0.5 ? '½' : n % 1 ? (Math.floor(n) + '½') : String(n));
 
   // muscles that shorten between two poses (concentric), for poses without mus
   function autoMus(from, to) {
@@ -289,6 +299,15 @@
     pickR(a) { return a[Math.floor(this.rng() * a.length) % a.length]; }
     rr(a, b) { return a + this.rng() * (b - a); }
 
+    // ---------------- js/progress.js hooks (all optional) ----------------
+    progressCall(fn, args) {
+      const P = SEHS.Progress;
+      if (!P || typeof P[fn] !== 'function') return null;
+      try { return P[fn].apply(P, args || []); } catch (e) { console.warn('Progress.' + fn, e); return null; }
+    }
+    perk(a, k, def) { const p = a && a.lvl && a.lvl.perk; return p && typeof p[k] === 'number' ? p[k] : def; }
+    trailCol() { const c = this.cosmetic && this.cosmetic.trail; return c ? { col: '#ffffff', glow: c } : {}; }
+
     // ---------------- wave lifecycle ----------------
     startWave(n) {
       this.initRng();
@@ -329,8 +348,10 @@
       this.rig.reset();
       this.fx.reset();
       if (this.fx.clearShutdown) this.fx.clearShutdown();
-      this.fx.hudTarget = { x: 1084, y: 28 };
-      this.ws = { kills: 0, freezes: 0, correct: 0, wrong: 0, rescues: 0, comboBest: 0, scrap: 0, netted: 0, hits: 0 };
+      this.fx.hudTarget = { x: 1010, y: 24 };
+      this.ws = { kills: 0, freezes: 0, correct: 0, wrong: 0, rescues: 0, comboBest: 0, scrap: 0, netted: 0, hits: 0, energyLost: 0, ftStreak: 0, ftStreakMax: 0, faults: 0, contractsDone: [] };
+      this.contracts = this.progressCall('contractsFor', [n]) || [];
+      this.cosmetic = this.progressCall('cosmetic', []) || null;
       this.windupDone = false;
       // spawn plan
       this.spawnQueue = this.buildSpawnQueue();
@@ -415,7 +436,7 @@
         const spot = SPOTS[DEFAULT_SPOT[r.id] || 'X1'];
         const was = prev.find((p) => p.id === r.id);
         return {
-          id: r.id, name: r.name, unit: r.unit, type: r.type, visor: r.visor, spotId: DEFAULT_SPOT[r.id],
+          id: r.id, name: r.name, unit: r.unit, type: r.type, visor: r.visor, spotId: DEFAULT_SPOT[r.id], lvl: this.progressCall('allyLevel', [r.name]) || null,
           spot, x: spot.x, y: spot.y, face: spot.face, state: 'work', pauseT: 0, netT: 0, netter: null, anim: rand(0, 6),
           healT: 0, returned: !!(was && was.state === 'taken'), staged: false, shake: 0,
         };
@@ -433,7 +454,7 @@
     repairRate() {
       let r = 0;
       const lev = 1;
-      for (const a of this.allies) if (this.allyWorking(a)) r += ROLE_RATE[a.type] || 0.3;
+      for (const a of this.allies) if (this.allyWorking(a)) r += (ROLE_RATE[a.type] || 0.3) * this.perk(a, 'repairMul', 1);
       return r * (this.eff.repairMul || 1) * lev;
     }
 
@@ -451,7 +472,7 @@
       a.netter = netter;
       a.staged = false;
       if (netter) { netter.st = 'tow'; netter.ally = a; netter.towDir = this.awayDir(a.x, a.y); }
-      this.fx.netBurst && this.fx.popText(a.x, a.y - 34, fill(UI.hud.netted, { s: Math.ceil(a.netT) }), '#ffb020', 20);
+      
       Audio.netFire && Audio.netFire();
       this.breakCombo();
       this.ws.netted++;
@@ -509,7 +530,7 @@
         if (a.type === 'medic' && this.allyWorking(a) && this.mode === 'play') {
           a.healT -= wdt;
           if (a.healT <= 0) {
-            a.healT = this.eff.medicHealEvery || 60;
+            a.healT = Math.min(this.eff.medicHealEvery || 60, this.perk(a, 'healEvery', 999));
             if (this.energy < this.maxEnergy) { this.gainEnergy(1, a.x, a.y); this.say(a, pick(C.DRONE_BANTER.events.heal)); }
           }
         }
@@ -531,7 +552,7 @@
           const ta = Math.atan2(best.y - TURRET.y, best.x - TURRET.x);
           T.ang += angDiff(ta / D2R, T.ang / D2R) * D2R * Math.min(1, wdt * 10);
           if (T.cd <= 0) {
-            T.cd = this.eff.turretRate || 2.5; T.fire = 1;
+            T.cd = (this.eff.turretRate || 2.5) / (bolt ? this.perk(bolt, 'turretRate', 1) : 1); T.fire = 1;
             this.beams.push({ x1: TURRET.x + Math.cos(T.ang) * 26, y1: TURRET.y + Math.sin(T.ang) * 26, x2: best.x, y2: best.y, t: 0, life: 0.12, col: '143,240,255', w: 2 });
             this.damageDrone(best, this.eff.turretDmg || 1, { noStop: true, src: 'turret' });
           }
@@ -662,7 +683,10 @@
               if (!a || a.state !== 'netted') { d.retreat = true; break; }
               d.x += d.towDir[0] * 30 * wdt; d.y += d.towDir[1] * 30 * wdt;
               d.ang = Math.atan2(d.towDir[1], d.towDir[0]);
-              a.x = d.x - d.towDir[0] * 16; a.y = d.y - d.towDir[1] * 16;
+              // the towed ally never slides under the HUD (it stays clickable)
+              const c = clearOfHud(d.x - d.towDir[0] * 16, d.y - d.towDir[1] * 16);
+              a.x = c[0]; a.y = c[1];
+              d.x = a.x + d.towDir[0] * 16; d.y = a.y + d.towDir[1] * 16;
               break;
             }
             if (!this.validAllyTarget(d.ally)) { d.ally = this.nearestAlly(d.x, d.y); if (d.st === 'charge') d.st = 'in'; }
@@ -886,10 +910,14 @@
       if (!(this.mode === 'play' || this.mode === 'intro')) return;
       if (this.marked) amount *= 2;
       this.energy = Math.max(0, this.energy - amount);
+      this.ws.energyLost += amount;
       const p = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, part === 'legR' ? 'footR' : part === 'armR' ? 'handR' : part, 1);
       this.fx.sparks(p[0], p[1], heavy ? 22 : 12, { g: 0, vmax: 420 });
       this.fx.addShake(heavy ? 8 : 4);
-      this.fx.popText(p[0], p[1] - 40, amount >= 1 ? `−${amount} ENERGY` : '−½ ENERGY', '#ff6a6a', 20);
+      // stacked chips merge into one counter instead of piling up
+      const ef = this.floaters.find((f) => f.kind === 'energy' && f.t < 0.9);
+      if (ef) { ef.amt += amount; ef.t = 0; ef.text = `−${fmtCells(ef.amt)} ENERGY`; }
+      else this.floaters.push({ x: AX, y: AY - 40, text: `−${fmtCells(amount)} ENERGY`, col: '#ff6a6a', t: 0, life: 1.3, kind: 'energy', amt: amount });
       Audio.pop();
       this.stats.chips++; this.ws.hits++;
       this.breakCombo();
@@ -963,7 +991,9 @@
     }
 
     // ---------------- threat freeze (§4.4) ----------------
-    buildOptions(st) {
+    buildOptions(st, id) {
+      this.distRot = this.distRot || {};
+      const rot = (this.distRot[id] = (this.distRot[id] || 0) + 1) - 1;
       if (st.kind === 'contraction') {
         const base = (st.options || ['Concentric', 'Eccentric', 'Isometric']).slice();
         if (st.tier >= 3 && st.fail.Isotonic && !base.includes('Isotonic')) base.push('Isotonic');
@@ -972,8 +1002,9 @@
       const ds = st.distractors.slice();
       const pw = shuffle(st.planeWrong.slice());
       let opts;
-      if (st.tier <= 1) opts = [st.correct, ds[0], pw[0], pw[1]];
-      else if (st.tier === 2) opts = [st.correct, ds[0], pick(ds.slice(1)) || pw[1], pw[0]];
+      // the distractors rotate across re-asks and visits so every one is seen
+      if (st.tier <= 1) opts = [st.correct, ds[rot % ds.length], pw[0], pw[1]];
+      else if (st.tier === 2) { const rest = ds.slice(1); opts = [st.correct, ds[0], rest.length ? rest[rot % rest.length] : pw[1], pw[0]]; }
       else { opts = [st.correct].concat(ds.slice(0, 3)); let i = 0; while (opts.length < 4 && i < pw.length) opts.push(pw[i++]); }
       return shuffle(opts.filter((v, i, a) => v && a.indexOf(v) === i));
     }
@@ -998,7 +1029,9 @@
         case 'hipPivot': {
           const t = AndroidTop.partPoint(sp, AX, AY, 'toeR', 1), h = AndroidTop.partPoint(sp, AX, AY, 'heelR', 1);
           const dx = t[0] - h[0], dy = t[1] - h[1], l = Math.hypot(dx, dy) || 1;
-          out.drone = [t[0] - (dy / l) * 2 + (dx / l) * 2, t[1] + (dx / l) * 2 + (dy / l) * 2];
+          const t0 = AndroidTop.partPoint(st, AX, AY, 'toeR', 1);
+          const mx = (t[0] + t0[0]) / 2, my = (t[1] + t0[1]) / 2;
+          out.drone = [mx + 10, my + 2 + (dy / l) * 0]; // touching the outside of the right forefoot
           break;
         }
         case 'spineTwist': {
@@ -1047,7 +1080,7 @@
       else d.stageAt = pos.drone;
       if (ally) { ally.staged = true; ally.from = [ally.x, ally.y]; ally.stageAt = pos.ally; }
       const reask = this.reask.includes(id) || !!o.reask;
-      const options = reask && this.optionSets[id] ? shuffle(this.optionSets[id].slice()) : this.buildOptions(st);
+      const options = o.options ? shuffle(o.options.slice()) : reask && this.optionSets[id] ? shuffle(this.optionSets[id].slice()) : this.buildOptions(st, id);
       this.optionSets[id] = options.slice();
       let total = this.cfg.timerBase + (this.eff.freezeBonus || 0);
       if (o.boss) total = Math.max(4.5, total - 1);
@@ -1203,6 +1236,12 @@
       F.result = result; F.choice = choice;
       const rt = Math.round((F.total - Math.max(0, F.timer)) * 1000);
       this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'threat', id: F.id, topic: st.kind === 'movement' ? 'joint_actions' : 'contractions', kind: st.kind, choice: choice || '(timeout)', correct: result === 'correct', answer: st.correct, result, rtMs: rt, reask: F.reask, assist: !!F.practice, boss: F.boss });
+      if (result === 'correct' && !F.reask) { this.ws.ftStreak = (this.ws.ftStreak || 0) + 1; this.ws.ftStreakMax = Math.max(this.ws.ftStreakMax || 0, this.ws.ftStreak); }
+      else this.ws.ftStreak = 0;
+      const P = SEHS.Progress;
+      if (P && typeof P.onFreeze === 'function') {
+        try { P.onFreeze({ threatId: F.id, action: st.correct, kind: st.kind, choice: choice || null, correct: result === 'correct', result, firstTry: !F.reask, timeMs: rt, allyName: F.ally ? F.ally.name : null, wave: this.wave, assist: !!F.practice }); } catch (e) { /* ignore */ }
+      }
       const ts = this.save.threatStats[F.id] || (this.save.threatStats[F.id] = { seen: 0, firstTryCorrect: 0, streak: 0 });
       if (!F.reask) { this.stats.firstTries++; ts.seen++; }
       if (result === 'correct') {
@@ -1210,6 +1249,7 @@
         if (!F.reask) { this.stats.firstTryCorrect++; ts.firstTryCorrect++; }
         ts.streak = (ts.streak || 0) + 1;
         this.reask = this.reask.filter((q) => q !== F.id);
+        if (this.reaskFrom && this.reaskFrom[F.id]) delete this.reaskFrom[F.id];
         Audio.good();
         this.game.ui.toast(this.namedSt(F), C.PLANES.transverse, { side: F.panelSide === 'left' ? 'left' : 'right' });
         this.startAct(this.actSuccess(F));
@@ -1277,11 +1317,11 @@
       const trail = () => {
         const pts = [];
         for (let i = 0; i <= 8; i++) { const q = TopPose.lerp(st0, sp, i / 8); pts.push(id === 'hipPivot' ? AndroidTop.partPoint(q, AX, AY, 'toeR', 1) : handAt(q)); }
-        this.fx.swatTrail(pts, { width: 10, life: 0.4 });
+        this.fx.swatTrail(pts, Object.assign({ width: 10, life: 0.4 }, this.trailCol()));
         Audio.swat && Audio.swat();
       };
       this.readout = this.makeReadout(F, st0, sp, F.st.correct, 'correct');
-      this.floater(F.S.limbPt, mvName(F.st.correct), '#7dff9a');
+      this.floater(F.S.limbPt, mvName(F.st.correct), '#7dff9a', 1.4, 'action');
       if (id === 'tetherPull') endT = T + 1.2;
       if (id === 'heavyCatch') endT = T + 1.6;
       if (id === 'discWindup') endT = 2.0;
@@ -1346,8 +1386,8 @@
       const okPose = TopPose.threat(id, 'success');
       const tc = hes + T + 0.12;
       let hit = false, endT = tc + 1.3, lunge = null;
-      if (!timeout) this.floater(F.S.limbPt, mvName(asKey), '#ffb020');
-      else this.floater(F.S.limbPt, UI.card.timeoutTitle, '#ff6a6a');
+      if (!timeout) this.floater(F.S.limbPt, mvName(asKey), '#ffb020', 1.4, 'action');
+      else this.floater(F.S.limbPt, UI.card.timeoutTitle, '#ff6a6a', 1.4, 'action');
       this.readout = this.makeReadout(F, st0, endPose, timeout ? null : (F.choice || asKey), timeout ? 'timeout' : 'wrong');
       return {
         update(t, dt) {
@@ -1420,7 +1460,7 @@
       let cracked = false, flare = false, sT = 0;
       Audio.glitch();
       this.pl.status = 'warn';
-      this.floater(F.S.limbPt, String(F.choice).toUpperCase() + '?!', '#ff5a5a');
+      this.floater(F.S.limbPt, String(F.choice).toUpperCase() + '?!', '#ff5a5a', 1.4, 'action');
       return {
         update(t, dt) {
           const k = ease(t / 0.35);
@@ -1461,6 +1501,7 @@
 
     loseCell() {
       this.energy = Math.max(0, this.energy - 1);
+      this.ws.energyLost += 1;
       this.stats.partials++;
       this.breakCombo();
       if (this.energy <= 0 && this.failInfo) this.failInfo.shutdown = true;
@@ -1478,6 +1519,7 @@
     finishOutcome() {
       const F = this.freeze;
       this.act = null;
+      this.ghostPose = null;
       this.pl.neutral = false;
       if (F.result === 'correct') { this.endFreeze(true); return; }
       if (this.failInfo && this.failInfo.shutdown && !this.failInfo.shutPlayed) {
@@ -1515,6 +1557,7 @@
       const g = TopPose.lerp(F.stagePose, TopPose.threat(F.id, 'success'), k);
       g.mus = TopPose.threat(F.id, 'success').mus;
       this.ghostPose = g;
+      this.ghostAlpha = 0.82;
       this.ghostRig.update(g, dt * 0.6);
       if (this.modeT >= 1.6) { this.ghostPose = null; this.endFreeze(false); }
     }
@@ -1535,7 +1578,15 @@
         this.addScrap(5, F.drone.x, F.drone.y);
         const a = F.ally || pick(this.allies.filter((q) => this.allyWorking(q)));
         if (a && F.ally) this.say(a, pick(C.DRONE_BANTER.events.rescued));
-      } else if (!F.boss && !this.reask.includes(F.id)) this.reask.push(F.id);
+      } else if (!F.boss) {
+        // re-ask with a SIBLING (same correct answer, new situation) when the wave has one
+        const sib = Object.keys(C.DRONE_THREATS).filter((k) => k !== F.id && C.DRONE_THREATS[k].correct === F.st.correct && C.DRONE_THREATS[k].kind === F.st.kind && this.cfg.pool.includes(k) && !this.reask.includes(k));
+        const next = sib.length ? this.pickR(sib) : F.id;
+        this.reask = this.reask.filter((q) => q !== F.id);
+        if (!this.reask.includes(next)) this.reask.push(next);
+        this.reaskFrom = this.reaskFrom || {};
+        this.reaskFrom[next] = F.id;
+      }
       if (F.boss) this.wardenChainResult(ok, F.id);
       this.freeze = null;
       if (this.failInfo && this.failInfo.shutdown) { this.failInfo = null; this.loseWave('shutdown'); return; }
@@ -1549,8 +1600,10 @@
       if (Wk && typeof Wk.addScrap === 'function' && !opts) { try { Wk.addScrap(this.save, n); } catch (e) { this.save.scrap = (this.save.scrap || 0) + n; } }
       else if (!opts) this.save.scrap = (this.save.scrap || 0) + n;
       this.ws.scrap += n;
+      // mid-wave scrap survives a closed tab (throttled save)
+      if (!opts && Date.now() - (this._scrapSaved || 0) > 3000) { this._scrapSaved = Date.now(); this.persist(); }
       const p = this.worldToScreen(x, y);
-      this.fx.scrapPickup(x, y, { n: Math.min(8, n), tx: this.screenToWorld(1084, 28)[0], ty: this.screenToWorld(1084, 28)[1] });
+      this.fx.scrapPickup(x, y, { n: Math.min(8, n), tx: this.screenToWorld(1010, 24)[0], ty: this.screenToWorld(1010, 24)[1] });
       this.fx.popText(x, y - 30, `+${n} SCRAP`, '#ffd27a', 22);
       Audio.scrapCoin && setTimeout(() => Audio.scrapCoin(), 350);
       return p;
@@ -1641,6 +1694,7 @@
       this.closeRescue();
       this.game.ui.hideDecision();
       this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'wave', id: why, result: 'failed' });
+      this.waveEnd(false);
       this.persist();
       const crew = why === 'nocrew';
       this.lostWhy = why;
@@ -1660,6 +1714,21 @@
           ].filter(Boolean),
         });
       }, crew ? 900 : 300);
+    }
+
+    // wave contracts (js/progress.js): pay their scrap through the workshop
+    waveEnd(cleared) {
+      const r = this.progressCall('onWaveEnd', [{ wave: this.wave, cleared, alliesNetted: this.ws.netted, energyLost: this.ws.energyLost, freezes: this.ws.freezes, firstTryStreakMax: this.ws.ftStreakMax || 0, assist: this.practice() }]);
+      const done = (r && Array.isArray(r.completed)) ? r.completed : [];
+      done.forEach((c) => {
+        const n = Math.round(c.scrap || 0);
+        if (!n) return;
+        const Wk = SEHS.Workshop;
+        if (Wk && typeof Wk.addScrap === 'function') { try { Wk.addScrap(this.save, n); } catch (e) { this.save.scrap += n; } } else this.save.scrap += n;
+        this.ws.scrap += n;
+      });
+      this.ws.contractsDone = done;
+      return done;
     }
 
     clearWave() {
@@ -1685,6 +1754,7 @@
         this.addScrap(20, TRUCK.x, TRUCK.y - 40);
       }
       this.kiteHome = this.allies.some((q) => q.id === 'kite' && q.state !== 'taken');
+      this.waveEnd(true);
       this.persist();
     }
 
@@ -1709,6 +1779,7 @@
             <div><b>${this.energy}/${this.maxEnergy}</b><span>energy left</span></div>
             <div><b>${this.reask.length}</b><span>threats to re-ask</span></div>
           </div>
+          ${ws.contractsDone && ws.contractsDone.length ? `<div class="dd-contracts"><b>CONTRACTS COMPLETE</b>${ws.contractsDone.map((c) => `<div>✔ ${c.name}${c.scrap ? ` <span>+${c.scrap} scrap</span>` : ''}</div>`).join('')}</div>` : ''}
           ${this.reask.length ? `<p class="dim">Coming back next wave: <b>${this.reask.map((id) => C.DRONE_THREATS[id].title).join(', ')}</b></p>` : ''}
           ${this.saveOk ? '' : `<p class="dim">${UI.hud.notSaved}</p>`}`,
         buttons: [
@@ -1733,7 +1804,7 @@
       const even = Object.keys(sides).length > 1 && Object.values(sides).every((v) => v === mv);
       return {
         signal: true, noSignal: false, wave: n, counts,
-        drones: Object.keys(counts).filter((t) => counts[t] > 0).map((t) => ({ type: t, count: counts[t], isNew: cfg.newTypes.includes(t) })).concat(cfg.boss ? [{ type: 'warden', count: 1, isNew: n === 5 }] : []), newTypes: cfg.newTypes, newText: cfg.newTypes.map((t) => UI.workshop.intelNew[t]).filter(Boolean),
+        drones: Object.keys(counts).filter((t) => counts[t] > 0).map((t) => ({ type: t, count: counts[t], isNew: cfg.newTypes.includes(t), art: DT[t].art, iconUrl: droneIconUrl(t) })).concat(cfg.boss ? [{ type: 'warden', count: 1, isNew: n === 5, art: 'warden', iconUrl: droneIconUrl('warden') }] : []), newTypes: cfg.newTypes, newText: cfg.newTypes.map((t) => UI.workshop.intelNew[t]).filter(Boolean),
         sides, mainSide: even ? null : SIDE_NAME[main], sideText: even ? 'Drones from every side' : fill(UI.workshop.intelSides, { side: SIDE_NAME[main] }),
         contraction: cfg.pool.some((id) => C.DRONE_THREATS[id].kind === 'contraction'), warden: cfg.boss, boss: cfg.boss,
         wardenText: cfg.boss ? UI.wave.wardenInbound : null, subsystem: cfg.sub,
@@ -1868,23 +1939,37 @@
       return true;
     }
 
+    // Rescue (§4.5): step 1 = which plane is the movement in; step 2 = which
+    // axis. A wrong answer jams the cutter for 2 s and asks the SAME step again.
     newRescueQuestion() {
       const R = this.rescue;
-      const movs = Object.keys(C.MOVEMENT_PLANE).filter((m) => C.PLANES[C.MOVEMENT_PLANE[m]]);
-      const mv = pick(movs);
+      if (!R.mv) {
+        const pool = (Array.isArray(C.DRONE_RESCUE_MOVES) && C.DRONE_RESCUE_MOVES.length ? C.DRONE_RESCUE_MOVES : (C.TUTORIALS.transverse.demos || C.PLANES.transverse.movements))
+          .map((m) => (typeof m === 'string' ? m : m && (m.move || m.name))).filter((m) => m && C.MOVEMENT_PLANE[m]);
+        R.mv = this.pickR(pool);
+        R.step = 1;
+      }
       const ids = ['sagittal', 'frontal', 'transverse'];
-      R.mv = mv;
-      R.correct = C.PLANES[C.MOVEMENT_PLANE[mv]].name;
-      R.options = shuffle(ids.map((id) => C.PLANES[id].name));
+      const pid = C.MOVEMENT_PLANE[R.mv];
       R.locked = false;
+      let prompt;
+      if (R.step === 1) {
+        R.correct = C.PLANES[pid].name;
+        R.options = shuffle(ids.map((id) => C.PLANES[id].name));
+        prompt = fill(UI.rescuePrompt, { movement: R.mv.toUpperCase() });
+      } else {
+        R.correct = C.axisName(pid);
+        R.options = shuffle(ids.map((id) => C.axisName(id)));
+        prompt = fill(UI.rescueAxisPrompt || 'Nearly free! {movement} is in the {plane}. Which axis does it turn about?', { movement: R.mv.toUpperCase(), plane: C.PLANES[pid].name.toLowerCase() });
+      }
       this.game.ui.showDecision({
-        title: `RESCUE ${R.ally.name}`,
-        kindText: 'CHOOSE THE PLANE',
-        prompt: fill(UI.rescuePrompt, { movement: mv.toUpperCase() }) + ` (${R.ally.name}: ${Math.ceil(R.ally.netT)} s left)`,
+        title: `RESCUE ${R.ally.name} · STEP ${R.step}/2`,
+        kindText: R.step === 1 ? 'CHOOSE THE PLANE' : 'CHOOSE THE AXIS',
+        prompt,
         options: R.options,
         side: R.ally.x < AX ? 'dd-right' : 'dd-left',
-        noTimer: true,
       });
+      this.game.ui.setTimer(clamp(R.ally.netT / (R.ally.netMax || 8), 0, 1), Math.max(0, R.ally.netT), 'NET');
     }
 
     answerRescue(i) {
@@ -1893,9 +1978,17 @@
       const choice = R.options[i];
       if (!choice) return;
       const ok = choice === R.correct;
-      this.stats.rescueTries++;
-      this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'rescue', id: R.mv, topic: 'planes_axes', kind: 'plane', choice, correct: ok, result: ok ? 'correct' : 'plane', rtMs: 0, reask: false, assist: false });
       const a = R.ally;
+      this.stats.rescueTries++;
+      this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'rescue', id: R.mv, step: R.step, topic: 'planes_axes', kind: R.step === 1 ? 'plane' : 'axis', choice, correct: ok, result: ok ? 'correct' : 'plane', rtMs: 0, reask: false, assist: this.practice() });
+      const P = SEHS.Progress;
+      if (P && typeof P.onRescue === 'function') { try { P.onRescue({ move: R.mv, step: R.step, correct: ok, allyName: a.name }); } catch (e) { /* ignore */ } }
+      if (ok && R.step === 1) {
+        Audio.questionRight ? Audio.questionRight() : Audio.good();
+        R.step = 2;
+        this.newRescueQuestion();
+        return;
+      }
       if (ok) {
         Audio.questionRight ? Audio.questionRight() : Audio.good();
         this.stats.rescues++;
@@ -1904,13 +1997,19 @@
         this.fx.popText(a.x, a.y - 50, fill(UI.rescueCorrect, { name: a.name }), '#7dff9a', 22);
         this.closeRescue();
         this.freeAlly(a, false);
-      } else {
-        Audio.questionWrong ? Audio.questionWrong() : Audio.fail();
-        R.locked = true;
-        a.lockT = this.time + 2;
-        this.game.ui.rescueWrong(fill(UI.rescueWrong, { movement: R.mv, plane: C.PLANES[C.MOVEMENT_PLANE[R.mv]].name.toLowerCase() }));
-        setTimeout(() => { if (this.rescue === R && a.state === 'netted' && this.game.level === this) this.newRescueQuestion(); }, 2000);
+        return;
       }
+      Audio.questionWrong ? Audio.questionWrong() : Audio.fail();
+      R.locked = true;
+      a.lockT = this.time + 2;
+      const pid = C.MOVEMENT_PLANE[R.mv];
+      const Wk = SEHS.Workshop;
+      if (Wk && typeof Wk.addFault === 'function') { try { Wk.addFault(this.save, 'planes_axes', this.rng); } catch (e) { /* ignore */ } }
+      const msg = R.step === 1
+        ? fill(UI.rescueWrong, { movement: R.mv, plane: C.PLANES[pid].name.toLowerCase() })
+        : `Cutter jammed! The ${C.PLANES[pid].name.toLowerCase()} turns about the ${C.axisAllNames(pid)}. Try again in 2 s.`;
+      this.game.ui.rescueWrong(msg);
+      setTimeout(() => { if (this.rescue === R && a.state === 'netted' && this.game.level === this) this.newRescueQuestion(); }, 2000);
     }
 
     closeRescue() {
@@ -2013,8 +2112,7 @@
       else if (plan.kind === 'stomp') this.cd.hip = 0.9 * od;
       else this.cd[plan.side] = (A.cd || 0.55) * od;
       this.action = { plan, A, t: 0, d, focus, hit: false, l2: false };
-      if (plan.kind === 'disc' && Math.abs(plan.th) > 60 && this.labels) this.floater('head', mvName('Rotation') + ' (TRUNK)', '#bff4ff', 0.8);
-      if (this.labels) this.floater(plan.kind === 'stomp' ? 'foot' + plan.side : 'hand' + plan.side, A.label, '#bff4ff', 0.8);
+      if (this.labels) this.floater(plan.kind === 'stomp' ? 'foot' + plan.side : 'hand' + plan.side, (plan.kind === 'disc' && Math.abs(plan.th) > 60 ? mvName('Rotation') + ' + ' : '') + A.label, '#bff4ff', 0.8, 'action');
     }
 
     sampleKeys(keys, t) {
@@ -2030,7 +2128,7 @@
       const { plan, A } = ac;
       const p = this.sampleKeys(A.keys, ac.t);
       this.pl.pose = p;
-      if (A.label2 && !ac.l2 && ac.t >= A.label2At) { ac.l2 = true; if (this.labels) this.floater('hand' + plan.side, A.label2, '#ffd27a', 0.8); }
+      if (A.label2 && !ac.l2 && ac.t >= A.label2At) { ac.l2 = true; if (this.labels) this.floater('hand' + plan.side, A.label2, '#ffd27a', 0.8, 'action'); }
       if (!ac.hit && ac.t >= A.hit) { ac.hit = true; this.actionHit(ac); }
       if (ac.t >= A.dur) this.action = null;
     }
@@ -2055,7 +2153,7 @@
         case 'cross': case 'backhand': {
           const pts = [];
           for (let i = 0; i <= 6; i++) pts.push(AndroidTop.handPos(this.sampleKeys(ac.A.keys, 0.09 + (i / 6) * 0.13), ox, oy, plan.side, 1));
-          this.fx.swatTrail(pts, { width: 9 });
+          this.fx.swatTrail(pts, Object.assign({ width: 9 }, this.trailCol()));
           Audio.swat && Audio.swat();
           if (d && !d.dead && dist(d.x, d.y, ox, oy) <= 165 + (E.backhandReach || 0)) {
             const [ux, uy] = this.awayDir(d.x, d.y);
@@ -2067,7 +2165,7 @@
         case 'spin': {
           const pts = [];
           for (let i = 0; i <= 8; i++) pts.push(AndroidTop.handPos(this.sampleKeys(ac.A.keys, 0.1 + (i / 8) * 0.22), ox, oy, plan.side, 1));
-          this.fx.swatTrail(pts, { width: 11 });
+          this.fx.swatTrail(pts, Object.assign({ width: 11 }, this.trailCol()));
           Audio.swat && Audio.swat();
           const half = (E.sweepArc || 60) / 2;
           for (const q of this.drones) {
@@ -2140,12 +2238,14 @@
       }
     }
 
-    floater(part, text, col, life) {
-      const p = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, part === 'foot' + 'R' ? 'footR' : part, 1);
+    floater(part, text, col, life, kind) {
+      const p = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, part, 1);
+      // at most one action label on the android at a time
+      if (kind === 'action') this.floaters = this.floaters.filter((f) => f.kind !== 'action');
       // stack on top of labels that are still rising nearby
       let y = p[1];
       for (const f of this.floaters) if (f.t < 0.6 && Math.abs(f.x - p[0]) < 140 && Math.abs(f.y - y) < 20) y = f.y - 22;
-      this.floaters.push({ x: p[0], y, text, col: col || '#bff4ff', t: 0, life: life || 1.4, part });
+      this.floaters.push({ x: p[0], y, text, col: col || '#bff4ff', t: 0, life: life || 1.4, part, kind });
     }
 
     // ---------------- input ----------------
@@ -2208,7 +2308,7 @@
       this.hitFlash = Math.max(0, (this.hitFlash || 0) - dt);
       const m = this.mode;
       let wdt = 0;
-      if (m === 'intro') { this.modeT += dt; wdt = dt; if (this.modeT > 2.6) { this.mode = 'play'; this.modeT = 0; } }
+      if (m === 'intro') { this.modeT += dt; wdt = dt; if (this.modeT > this.introLen()) { this.mode = 'play'; this.modeT = 0; } }
       else if (m === 'play') { this.ts = this.rescue ? 0.5 : 1; wdt = dt * this.ts; }
       else if (m === 'ramp') { this.updateRamp(dt); wdt = dt * this.ts; }
       else if (m === 'decide') { this.updateDecide(dt); wdt = dt * 0.02; }
@@ -2259,7 +2359,7 @@
       this.fx.update(slow ? dt * 0.15 : dt);
       this.rig.update(this.pl.pose, m === 'decide' ? dt * 0.5 : dt);
       if (this.rescue && this.rescue.ally.state !== 'netted') this.closeRescue();
-      if (this.rescue && this.mode === 'play') this.game.ui.rescueTick && this.game.ui.rescueTick(Math.max(0, this.rescue.ally.netT), this.rescue.ally.netMax || 8);
+      if (this.rescue && this.mode === 'play' && !this.rescue.locked) this.game.ui.setTimer(clamp(this.rescue.ally.netT / (this.rescue.ally.netMax || 8), 0, 1), Math.max(0, this.rescue.ally.netT), 'NET');
     }
 
     jammed() {
@@ -2411,6 +2511,7 @@
         highlight: showHl ? { joints: F.S.joints, arcs: true } : null,
         labels: opts.labels ? 'active' : null,
         malfunction: pl.mal, launcher, lockHand: tO.lockHand || null, feetBold: tO.feetBold || null,
+        visor: this.cosmetic && this.cosmetic.visor ? this.cosmetic.visor : undefined,
       };
       this.lastRig = this.rig.draw(ctx, pl.pose, x, y, o);
       // damage smoke
@@ -2439,7 +2540,7 @@
       g.globalCompositeOperation = 'source-over';
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = 0.82;
+      ctx.globalAlpha = this.ghostAlpha || 0.82;
       ctx.drawImage(cv, 0, 0);
       ctx.restore();
     }
@@ -2707,7 +2808,8 @@
         const k = f.t / f.life;
         ctx.save();
         ctx.globalAlpha = k < 0.75 ? 1 : 1 - (k - 0.75) / 0.25;
-        this.worldText(ctx, f.text, f.x, f.y - 46 - 26 * easeOut(k), f.col, 14);
+        const q = clearOfHud(f.x, f.y - 46 - 26 * easeOut(k));
+        this.worldText(ctx, f.text, q[0], q[1], f.col, f.kind === 'energy' ? 18 : 14);
         ctx.restore();
       }
     }
@@ -2743,7 +2845,7 @@
       const ns = this.nextSpawn;
       const kite = this.allies.find((a) => a.type === 'scout' && this.allyWorking(a));
       if (!ns || !kite) return;
-      const lead = 2 + (this.eff.earlyWarning || 0) / 100;
+      const lead = Math.max(2, this.perk(kite, 'warnEarly', 2)) + (this.eff.earlyWarning || 0) / 100;
       const dt = ns.at - this.waveT;
       if (dt > lead || dt < 0) return;
       const sxn = Math.sin(ns.th * D2R), syn = -Math.cos(ns.th * D2R);
@@ -2790,7 +2892,8 @@
       const a = m === 'ramp' ? clamp((this.modeT - 0.3) / 0.3, 0, 1) : 1;
       const pl = this.pl, ax = AX + pl.ox, ay = AY + pl.oy;
       const foc = AndroidTop.partPoint(pl.pose, ax, ay, F.S.inset, 1);
-      const fx0 = ax * 0.4 + foc[0] * 0.6, fy0 = ay * 0.4 + foc[1] * 0.6;
+      const feet = F.S.inset === 'footR';
+      const fx0 = feet ? foc[0] + 6 : ax * 0.4 + foc[0] * 0.6, fy0 = feet ? foc[1] - 4 : ay * 0.4 + foc[1] * 0.6;
       const fs = this.worldToScreen(fx0, fy0), ds = this.worldToScreen(F.drone.x, F.drone.y);
       const left = F.panelSide === 'left';
       const r = 118, Zi = 3.1;
@@ -2820,8 +2923,24 @@
       ctx.beginPath(); ctx.moveTo(fx0 + (dx / dl) * 12, fy0 + (dy / dl) * 12); ctx.lineTo(fx0 + (dx / dl) * 60, fy0 + (dy / dl) * 60); ctx.stroke();
       ctx.setLineDash([]);
       const showHl = m === 'decide';
-      this.rig.draw(ctx, pl.pose, ax, ay, { scale: 1, status: pl.status, neutral: this.jammed(), damage: this.damage, reduce: this.fx.reduce, highlight: showHl ? { joints: F.S.joints, arcs: true } : null, malfunction: pl.mal, launcher: F.tOpts.launcher || null });
-      if (this.ghostPose) this.ghostRig.draw(ctx, this.ghostPose, AX, AY, { scale: 1, status: 'ok', reduce: this.fx.reduce });
+      if (feet) {
+        // trunk drawn see-through so the heel pivot and toe direction read clearly
+        ctx.save(); ctx.globalAlpha = 0.3;
+        this.rig.draw(ctx, pl.pose, ax, ay, { scale: 1, status: pl.status, reduce: this.fx.reduce, malfunction: pl.mal });
+        ctx.restore();
+        for (const sd of ['L', 'R']) {
+          const h = AndroidTop.partPoint(pl.pose, ax, ay, 'heel' + sd, 1), tq = AndroidTop.partPoint(pl.pose, ax, ay, 'toe' + sd, 1);
+          ctx.strokeStyle = sd === 'R' ? '#ffe066' : '#9aa5b1'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(h[0], h[1]); ctx.lineTo(tq[0], tq[1]); ctx.stroke();
+          const an = Math.atan2(tq[1] - h[1], tq[0] - h[0]);
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath(); ctx.moveTo(tq[0] + Math.cos(an) * 4, tq[1] + Math.sin(an) * 4); ctx.lineTo(tq[0] + Math.cos(an + 2.5) * 4, tq[1] + Math.sin(an + 2.5) * 4); ctx.lineTo(tq[0] + Math.cos(an - 2.5) * 4, tq[1] + Math.sin(an - 2.5) * 4); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#bff4ff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(h[0], h[1], 2.2, 0, TAU); ctx.stroke();
+        }
+        if (showHl) { const hp = AndroidTop.partPoint(pl.pose, ax, ay, 'heelR', 1); ctx.fillStyle = '#bff4ff'; ctx.font = '800 3.4px ui-monospace, monospace'; ctx.textAlign = 'center'; ctx.fillText('HEEL PIVOT ⊙', hp[0], hp[1] + 6); }
+        this.drawDrone(ctx, F.drone);
+      } else this.rig.draw(ctx, pl.pose, ax, ay, { scale: 1, status: pl.status, neutral: this.jammed(), damage: this.damage, reduce: this.fx.reduce, highlight: showHl ? { joints: F.S.joints, arcs: true } : null, malfunction: pl.mal, launcher: F.tOpts.launcher || null });
+      if (this.ghostPose) { ctx.save(); ctx.globalAlpha = Math.min(0.7, this.ghostAlpha || 0.7); this.ghostRig.draw(ctx, this.ghostPose, AX, AY, { scale: 1, status: 'ok', reduce: this.fx.reduce }); ctx.restore(); }
       ctx.restore();
       ctx.strokeStyle = '#8ff0ff'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
@@ -2846,13 +2965,19 @@
       const col = r.kind === 'correct' ? '#7dff9a' : r.kind === 'timeout' ? '#ff8a8a' : '#ffb020';
       ctx.save();
       ctx.font = '800 17px ui-monospace, monospace';
-      const tw = ctx.measureText(r.text).width + 30;
-      const x = clamp(W / 2 - tw / 2, 300, W - 210 - tw), y = H - 64;
+      // fits between the muscle monitor and the ally roster; long text wraps at ':'
+      const maxW = 680;
+      let lines = [r.text];
+      if (ctx.measureText(r.text).width + 30 > maxW) { const k = r.text.indexOf(': '); lines = k > 0 ? [r.text.slice(0, k + 1), r.text.slice(k + 2)] : [r.text]; }
+      if (lines.some((l) => ctx.measureText(l).width + 30 > maxW)) ctx.font = '800 15px ui-monospace, monospace';
+      const tw = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 30);
+      const bh = 14 + lines.length * 21;
+      const x = clamp(W / 2 - tw / 2, 345, W - 252 - tw), y = H - 30 - bh;
       ctx.globalAlpha = Math.min(1, r.t * 4);
-      ctx.fillStyle = 'rgba(6,12,18,0.88)'; ctx.strokeStyle = col; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, tw, 34, 6) : ctx.rect(x, y, tw, 34); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(6,12,18,0.9)'; ctx.strokeStyle = col; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, tw, bh, 6) : ctx.rect(x, y, tw, bh); ctx.fill(); ctx.stroke();
       ctx.fillStyle = col; ctx.textBaseline = 'middle';
-      ctx.fillText(r.text, x + 15, y + 18);
+      lines.forEach((l, i) => ctx.fillText(l, x + 15, y + 17 + i * 21, tw - 26));
       ctx.restore();
     }
 
@@ -2866,12 +2991,13 @@
     }
 
     drawIntro(ctx) {
-      const k = this.modeT;
-      const a = k < 0.3 ? k / 0.3 : k > 2.1 ? Math.max(0, (2.6 - k) / 0.5) : 1;
+      const k = this.modeT, end = this.introLen();
+      const a = k < 0.3 ? k / 0.3 : k > end - 0.5 ? Math.max(0, (end - k) / 0.5) : 1;
       const BY = 214;
+      const cs = (this.contracts || []).slice(0, 3);
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, BY - 92, W, 170);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, BY - 92, W, 170 + (cs.length ? 40 + cs.length * 26 : 0));
       ctx.textAlign = 'center';
       ctx.font = '900 64px ui-monospace, monospace';
       ctx.fillStyle = this.cfg.boss ? '#ff5a5a' : '#e8f4ff';
@@ -2882,8 +3008,16 @@
       ctx.font = '600 17px system-ui, sans-serif';
       ctx.fillStyle = '#bcd0de';
       ctx.fillText(this.introLine + '  ·  Click a drone or press A / D to target, SPACE to strike, R to cut a net.', W / 2, BY + 56);
+      if (cs.length) {
+        ctx.font = '800 16px ui-monospace, monospace'; ctx.fillStyle = '#8ff0ff';
+        ctx.fillText('WAVE CONTRACTS (bonus scrap)', W / 2, BY + 98);
+        ctx.font = '600 17px system-ui, sans-serif'; ctx.fillStyle = '#e8f4ff';
+        cs.forEach((c, i) => ctx.fillText(`◇ ${c.name}: ${c.desc || ''}`, W / 2, BY + 124 + i * 26));
+      }
       ctx.restore();
     }
+
+    introLen() { return 2.6 + Math.min(3, (this.contracts || []).length * 1.2); }
 
     drawClear(ctx) {
       const a = Math.min(1, this.modeT * 2);
@@ -2932,7 +3066,7 @@
 
     // first-wave targeting hint (stays until the player has targeted something)
     drawHint(ctx) {
-      if (this.mode !== 'play' || this.hasTargeted || this.wave > 2) return;
+      if (this.mode !== 'play' || this.hasTargeted || this.wave > 2 || this.rescue) return;
       const txt = 'Click a drone or press A / D, then SPACE to strike';
       ctx.save();
       ctx.font = '800 20px ui-monospace, monospace';
@@ -2950,81 +3084,87 @@
     drawHUD(ctx) {
       if (this.mode === 'workshop') return;
       ctx.save();
-      const g = ctx.createLinearGradient(0, 0, 0, 62);
-      g.addColorStop(0, 'rgba(3,6,10,0.85)'); g.addColorStop(1, 'rgba(3,6,10,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, 62);
+      const g = ctx.createLinearGradient(0, 0, 0, 70);
+      g.addColorStop(0, 'rgba(3,6,10,0.88)'); g.addColorStop(1, 'rgba(3,6,10,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, 70);
       ctx.textBaseline = 'middle';
-      // ENERGY (half cells)
+      // ENERGY (half cells); every HUD text is >= 14 px for the projector
       const n = this.maxEnergy;
-      ctx.font = '800 12px ui-monospace, monospace'; ctx.fillStyle = '#bfefff';
-      ctx.fillText('ENERGY', 18, 22);
+      ctx.font = '800 14px ui-monospace, monospace'; ctx.fillStyle = '#bfefff';
+      ctx.fillText('ENERGY', 16, 24);
+      const cw = n > 6 ? 26 : 30;
       for (let i = 0; i < n; i++) {
-        const x = 82 + i * 30, y = 14;
-        ctx.fillStyle = '#16222d'; ctx.fillRect(x, y, 26, 16);
+        const x = 84 + i * (cw + 4), y = 14;
+        ctx.fillStyle = '#16222d'; ctx.fillRect(x, y, cw, 20);
         const f = clamp(this.energy - i, 0, 1);
-        if (f > 0) {
-          ctx.fillStyle = this.energy <= 1.5 ? '#ff5a5a' : '#56e0ff';
-          ctx.fillRect(x, y, 26 * (f >= 1 ? 1 : 0.5), 16);
-        }
-        ctx.strokeStyle = '#2c3d4e'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, 25, 15);
-        ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.moveTo(x + 13, y + 2); ctx.lineTo(x + 13, y + 14); ctx.stroke();
+        if (f > 0) { ctx.fillStyle = this.energy <= 1.5 ? '#ff5a5a' : '#56e0ff'; ctx.fillRect(x, y, cw * (f >= 1 ? 1 : 0.5), 20); }
+        ctx.strokeStyle = '#2c3d4e'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, cw - 1, 19);
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.moveTo(x + cw / 2, y + 2); ctx.lineTo(x + cw / 2, y + 18); ctx.stroke();
       }
-      ctx.fillStyle = '#e8f4ff'; ctx.font = '800 14px ui-monospace, monospace';
-      const etxt = (this.energy % 1 ? this.energy.toFixed(1) : String(this.energy)) + '/' + n;
-      ctx.fillText(etxt, 88 + n * 30, 22);
-      if (this.marked) { ctx.fillStyle = '#ff5a5a'; ctx.font = '800 11px ui-monospace, monospace'; ctx.fillText('MARKED: HITS ×2', 18, 44); }
-      else if (this.snareT > 0) { ctx.fillStyle = '#ffb020'; ctx.font = '800 11px ui-monospace, monospace'; ctx.fillText('SNARED: NO TURNING', 18, 44); }
-      else if (this.hooked) { ctx.fillStyle = '#ffb020'; ctx.font = '800 11px ui-monospace, monospace'; ctx.fillText('RIGHT ARM HOOKED', 18, 44); }
+      ctx.fillStyle = '#e8f4ff'; ctx.font = '800 16px ui-monospace, monospace';
+      const etxt = fmtCells(this.energy) + '/' + n;
+      ctx.fillText(etxt, 90 + n * (cw + 4), 24);
+      ctx.font = '800 14px ui-monospace, monospace';
+      if (this.marked) { ctx.fillStyle = '#ff5a5a'; ctx.fillText('MARKED: HITS ×2', 16, 50); }
+      else if (this.snareT > 0) { ctx.fillStyle = '#ffb020'; ctx.fillText('SNARED: NO TURNING', 16, 50); }
+      else if (this.hooked) { ctx.fillStyle = '#ffb020'; ctx.fillText('RIGHT ARM HOOKED', 16, 50); }
+      else if (this.practice()) { ctx.fillStyle = '#8ff0ff'; ctx.fillText('PRACTICE: UNTIMED FREEZES', 16, 50); }
       // REPAIR
-      const rx = 440, rw = 400;
+      const rx = 430, rw = 420;
       const pct = this.repair / this.cfg.need;
       const rate = this.repairRate();
       const stalled = rate <= 0.001;
-      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(rx, 30, rw, 12);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(rx, 34, rw, 14);
       const rg = ctx.createLinearGradient(rx, 0, rx + rw, 0);
       rg.addColorStop(0, stalled ? '#555' : '#56e0ff'); rg.addColorStop(1, stalled ? '#777' : '#7dff9a');
-      ctx.fillStyle = rg; ctx.fillRect(rx, 30, rw * pct, 12);
-      ctx.strokeStyle = '#2c3d4e'; ctx.strokeRect(rx + 0.5, 30.5, rw - 1, 11);
-      ctx.font = '800 13px ui-monospace, monospace'; ctx.fillStyle = stalled ? '#9aa5b1' : '#e8f4ff';
-      ctx.fillText(fill(UI.hud.repair, { pct: Math.floor(pct * 100), subsystem: this.cfg.sub }), rx, 16);
+      ctx.fillStyle = rg; ctx.fillRect(rx, 34, rw * pct, 14);
+      ctx.strokeStyle = '#2c3d4e'; ctx.strokeRect(rx + 0.5, 34.5, rw - 1, 13);
+      ctx.font = '800 15px ui-monospace, monospace'; ctx.fillStyle = stalled ? '#9aa5b1' : '#e8f4ff';
+      ctx.fillText(fill(UI.hud.repair, { pct: Math.floor(pct * 100), subsystem: this.cfg.sub }), rx, 18);
       ctx.textAlign = 'right';
       ctx.fillStyle = stalled ? '#ff8a8a' : '#7dff9a';
-      ctx.fillText(stalled ? UI.hud.stalled : `+${rate.toFixed(1)}/s`, rx + rw, 16);
+      ctx.fillText(stalled ? UI.hud.stalled : `+${rate.toFixed(1)}/s`, rx + rw, 18);
       ctx.textAlign = 'left';
       if (this.warden && !this.warden.dead) {
-        ctx.font = '800 12px ui-monospace, monospace'; ctx.fillStyle = '#ff8a6a';
-        ctx.fillText(`THE WARDEN · PLATES ${this.warden.plates.filter(Boolean).length}/3${this.warden.phase >= 3 ? ' · CORE EXPOSED' : ''}`, rx, 54);
+        ctx.font = '800 14px ui-monospace, monospace'; ctx.fillStyle = '#ff8a6a';
+        ctx.fillText(`THE WARDEN · PLATES ${this.warden.plates.filter(Boolean).length}/3${this.warden.phase >= 3 ? ' · CORE EXPOSED' : ''}`, rx, 62);
       }
       // WAVE / SCRAP / COMBO
-      ctx.font = '900 16px ui-monospace, monospace'; ctx.fillStyle = '#e8f4ff';
-      ctx.fillText(fill(UI.hud.wave, { n: this.wave }), 900, 22);
+      ctx.font = '900 18px ui-monospace, monospace'; ctx.fillStyle = '#e8f4ff';
+      ctx.fillText(fill(UI.hud.wave, { n: this.wave }), 878, 24);
       ctx.fillStyle = '#ffd27a';
-      ctx.fillText(fill(UI.hud.scrap, { n: this.save.scrap || 0 }), 1000, 22);
+      ctx.fillText(fill(UI.hud.scrap, { n: this.save.scrap || 0 }), 978, 24);
       if (this.combo > 0) {
         ctx.fillStyle = this.combo >= 5 ? '#ff6a3d' : '#ffe066';
-        ctx.fillText(fill(UI.hud.combo, { n: this.combo }), 1124, 22);
+        ctx.fillText(fill(UI.hud.combo, { n: this.combo }), 1110, 24);
         const keep = this.eff.comboKeep || 3;
-        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(1124, 34, 90, 4);
-        ctx.fillStyle = '#ffe066'; ctx.fillRect(1124, 34, 90 * clamp(this.comboT / keep, 0, 1), 4);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(1110, 38, 100, 4);
+        ctx.fillStyle = '#ffe066'; ctx.fillRect(1110, 38, 100 * clamp(this.comboT / keep, 0, 1), 4);
       }
-      if (this.overdrive > 0) { ctx.fillStyle = '#ff6a3d'; ctx.font = '900 13px ui-monospace, monospace'; ctx.fillText(`${UI.hud.overdrive} ${this.overdrive.toFixed(1)}s`, 1124, 50); }
+      if (this.overdrive > 0) { ctx.fillStyle = '#ff6a3d'; ctx.font = '900 14px ui-monospace, monospace'; ctx.fillText(`${UI.hud.overdrive} ${this.overdrive.toFixed(1)}s`, 1110, 56); }
       // ALLY ROSTER (bottom-right)
       const list = this.allies;
-      const bx = W - 206, by0 = H - 14 - list.length * 30;
+      const RH = 36, bw = 236, bx = W - bw - 10, by0 = H - 10 - list.length * (RH + 3);
       list.forEach((a, i) => {
-        const y = by0 + i * 30;
+        const y = by0 + i * (RH + 3);
         const netted = a.state === 'netted', taken = a.state === 'taken';
-        ctx.fillStyle = netted ? 'rgba(60,40,0,0.85)' : taken ? 'rgba(50,10,14,0.85)' : 'rgba(6,12,18,0.82)';
-        ctx.fillRect(bx, y, 194, 26);
-        ctx.fillStyle = a.visor; ctx.fillRect(bx, y, 4, 26);
-        ctx.font = '800 12px ui-monospace, monospace'; ctx.fillStyle = a.visor;
-        ctx.fillText(a.name, bx + 10, y + 9);
-        ctx.font = '600 10px ui-monospace, monospace'; ctx.fillStyle = '#8fa3b3';
-        ctx.fillText(`${a.unit} · ${C.ALLY_TYPES[a.type].name.toUpperCase()}`, bx + 10, y + 20);
-        ctx.textAlign = 'right'; ctx.font = '800 11px ui-monospace, monospace';
+        ctx.fillStyle = netted ? 'rgba(60,40,0,0.88)' : taken ? 'rgba(50,10,14,0.88)' : 'rgba(6,12,18,0.85)';
+        ctx.fillRect(bx, y, bw, RH);
+        ctx.fillStyle = a.visor; ctx.fillRect(bx, y, 5, RH);
+        ctx.font = '800 15px ui-monospace, monospace'; ctx.fillStyle = a.visor;
+        ctx.fillText(a.name, bx + 12, y + 11);
+        const lv = a.lvl && a.lvl.level;
+        if (lv) {
+          const nw = ctx.measureText(a.name).width;
+          ctx.fillStyle = a.visor; ctx.fillRect(bx + 18 + nw, y + 3, 26, 16);
+          ctx.fillStyle = '#0a0f14'; ctx.font = '900 13px ui-monospace, monospace'; ctx.fillText('L' + lv, bx + 22 + nw, y + 11);
+        }
+        ctx.font = '600 13px ui-monospace, monospace'; ctx.fillStyle = '#a9bccb';
+        ctx.fillText(`${C.ALLY_TYPES[a.type].name.toUpperCase()}`, bx + 12, y + 27);
+        ctx.textAlign = 'right'; ctx.font = '800 14px ui-monospace, monospace';
         const shake = netted && !this.fx.reduce ? rand(-1, 1) : 0;
         ctx.fillStyle = netted ? '#ffb020' : taken ? '#ff5a5a' : a.pauseT > 0 ? '#ffb020' : '#4dff88';
-        ctx.fillText(netted ? fill(UI.hud.netted, { s: Math.ceil(a.netT) }) : taken ? UI.hud.draggedOff : a.pauseT > 0 ? 'BUMPED' : a.state === 'run' ? 'RUNNING' : UI.hud.working, bx + 188 + shake, y + 13);
+        ctx.fillText(netted ? fill(UI.hud.netted, { s: Math.ceil(a.netT) }) : taken ? UI.hud.draggedOff : a.pauseT > 0 ? 'BUMPED' : a.state === 'run' ? 'RUNNING' : UI.hud.working, bx + bw - 8 + shake, y + RH / 2);
         ctx.textAlign = 'left';
       });
       ctx.restore();
@@ -3060,8 +3200,12 @@
           if (!a) return 'none';
           if (!self.rescue) self.startRescue(a);
           if (!self.rescue) return 'blocked';
-          const i = self.rescue.options.indexOf(self.rescue.correct);
-          self.answerRescue(correct ? i : (i + 1) % 3);
+          // correct: answers both steps (plane, then axis); wrong: one wrong answer
+          for (let k = 0; k < 2 && self.rescue && !self.rescue.locked; k++) {
+            const i = self.rescue.options.indexOf(self.rescue.correct);
+            self.answerRescue(correct ? i : (i + 1) % 3);
+            if (!correct) break;
+          }
           return a.state;
         },
         wardenNow() {
@@ -3088,7 +3232,36 @@
     }
   }
 
+  // Scout-intel / codex icon for ANY drone type, including the four drawn with
+  // an overlay here (diver, lancer, spotter, crawler). drawIcon(canvas, type)
+  // paints into a canvas of any size; droneIconUrl(type) returns a cached PNG.
+  function drawIcon(cv, type) {
+    const g = cv.getContext && cv.getContext('2d');
+    if (!g || !DT[type]) return false;
+    const S = Math.min(cv.width, cv.height);
+    const ext = { lancer: 58, diver: 46, warden: 92, heavy: 46, crawler: 26 }[type] || radiusOf(type) * 1.25;
+    const k = (S * 0.46) / ext;
+    const d = { type, x: 0, y: 0, ang: -Math.PI / 2, st: 'hover', seed: 1, r: radiusOf(type), hp: 1, maxHp: 1, chargeT: 0.4, chargeMax: 1, staged: false, hit: 0 };
+    g.save();
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.translate(cv.width / 2, cv.height / 2 + (type === 'lancer' ? S * 0.18 : 0));
+    g.scale(k, k);
+    const spec = DT[type];
+    if (spec.art) DroneArt.draw(g, spec.art, 0, 0, d.ang, 0.4, { scale: spec.scale || 1, reduce: true, seed: 1 });
+    if (spec.overlay) DroneDefense.prototype.drawOverlay.call({ time: 0.4, fx: { reduce: true } }, g, d, spec.overlay);
+    g.restore();
+    return true;
+  }
+  const iconCache = {};
+  function droneIconUrl(type) {
+    if (iconCache[type]) return iconCache[type];
+    try { const cv = document.createElement('canvas'); cv.width = cv.height = 96; drawIcon(cv, type); iconCache[type] = cv.toDataURL('image/png'); } catch (e) { iconCache[type] = null; }
+    return iconCache[type];
+  }
+
   SEHS.DroneDefense = DroneDefense;
+  SEHS.DroneDefense.drawIcon = drawIcon;
+  SEHS.DroneDefense.droneIconUrl = droneIconUrl;
   SEHS.DroneDefense.THREAT_STAGE = THREAT_STAGE;
   SEHS.DroneDefense.waveCfg = waveCfg;
   SEHS.DroneDefense.SaveIO = SaveIO;

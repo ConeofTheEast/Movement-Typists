@@ -5,7 +5,10 @@
  *     threats: comma list of DRONE_THREATS ids, `all` (all 14), or `waves`
  *              (no forced threats: play real waves, see --waves)
  *     choices: comma list applied to EVERY threat in turn:
- *              correct | wrong | wrong2 | plane | timeout
+ *              correct | wrong | wrong2 | plane | timeout | every
+ *              every  = one freeze per distractor of the threat (the option set
+ *                       is forced so EVERY in-plane distractor and every wrong
+ *                       contraction is acted out), plus one plane option
  *              wrong  = 1st in-plane distractor shown (contraction: 1st wrong option)
  *              wrong2 = 2nd one; plane = an out-of-plane option (contraction
  *              threats have none, so `wrong` is used and logged)
@@ -20,6 +23,11 @@
  *     --rescue       net one ally and cut it free (wrong answer first, then right)
  *     --reduce       reduced flashing / shake setting
  *     --shots N      outcome frames per freeze (default 3)
+ *     --practice     practice mode (untimed freezes; checks the timer never fires)
+ *     --compare S    idle vs active: three fresh wave-2 runs of S seconds each:
+ *                    idle (no input, freezes time out), idle-targeting (no
+ *                    targeting, freezes answered right), active (targets with
+ *                    Space, freezes answered right). Prints a table.
  *
  * Screenshots: each freeze (decide), outcome frames, each fail card, replay,
  * cards and the workshop. Prints a final JSON state and `no errors`; exits 1
@@ -31,7 +39,7 @@ const fs = require('fs');
 const argv = process.argv.slice(2);
 const flag = (k) => argv.includes('--' + k);
 const val = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
-const pos = []; for (let i = 0; i < argv.length; i++) { if (argv[i].startsWith('--')) { if (['wave', 'waves', 'shots'].includes(argv[i].slice(2))) i++; continue; } pos.push(argv[i]); }
+const pos = []; for (let i = 0; i < argv.length; i++) { if (argv[i].startsWith('--')) { if (['wave', 'waves', 'shots', 'compare'].includes(argv[i].slice(2))) i++; continue; } pos.push(argv[i]); }
 const OUT = path.resolve(pos[0] || 'playtest-dd');
 fs.mkdirSync(OUT, { recursive: true });
 const ALL = ['netterOnAlly_left', 'netterOnAlly_right', 'crossSwat', 'backhandSwat', 'diveBehind', 'spineTwist', 'palmShield', 'palmCatch', 'discWindup', 'discThrow', 'discSnap', 'tetherPull', 'heavyCatch', 'hipPivot'];
@@ -45,12 +53,12 @@ const SHOTS = +val('shots', 3);
   const errs = [];
   pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message + '\n' + e.stack));
   pg.on('console', (m) => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()); });
-  await pg.addInitScript(({ reduce }) => {
+  await pg.addInitScript(({ reduce, practice }) => {
     try {
       localStorage.removeItem('kinetic-escape-drone-v1');
-      localStorage.setItem('kinetic-escape-settings', JSON.stringify({ sound: false, reduce, labels: false }));
+      localStorage.setItem('kinetic-escape-settings', JSON.stringify({ sound: false, reduce, labels: false, practice }));
     } catch (e) { /* ignore */ }
-  }, { reduce: flag('reduce') });
+  }, { reduce: flag('reduce'), practice: flag('practice') });
   await pg.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
   await pg.waitForTimeout(600);
   await pg.screenshot({ path: OUT + '/00-menu.png' });
@@ -80,14 +88,19 @@ const SHOTS = +val('shots', 3);
   await pg.waitForTimeout(200);
 
   // one freeze: force (optional), answer, screenshot the outcome and card
-  async function freeze(id, choice, tag) {
+  async function freeze(id, choice, tag, forced) {
     if (id) {
-      const r = await pg.evaluate((id) => game.level.debug.forceThreat(id), id);
+      const r = await pg.evaluate(({ id, forced }) => game.level.debug.forceThreat(id, forced ? { options: forced } : {}), { id, forced });
       if (!r) { log('could not force', id, JSON.stringify(await st())); return 'noforce'; }
     }
     const m = await waitMode(['decide']);
     if (m !== 'decide') { log('no decide for', id, m); return m; }
     await pg.waitForTimeout(500);
+    if (flag('practice')) {
+      await pg.evaluate(() => game.level.debug.skip(0)); await pg.waitForTimeout(2500);
+      const pr = await pg.evaluate(() => ({ mode: game.level.mode, timer: game.level.freeze && game.level.freeze.timer, total: game.level.freeze && game.level.freeze.total, bar: getComputedStyle(document.querySelector('.d-timer')).display }));
+      log('  practice check (still deciding, timer untouched, bar hidden):', JSON.stringify(pr));
+    }
     await shot(`${tag}-decide`);
     const info = await pg.evaluate((choice) => {
       const L = game.level, F = L.freeze, s = F.st, o = F.options;
@@ -95,12 +108,13 @@ const SHOTS = +val('shots', 3);
       const inplane = o.filter((x) => x !== s.correct && (s.kind === 'contraction' || C.planeOf(x) === 'transverse'));
       const plane = o.filter((x) => s.kind === 'movement' && C.planeOf(x) !== 'transverse');
       let pick = null, note = '';
-      if (choice === 'correct') pick = s.correct;
+      if (choice.startsWith('pick:')) pick = choice.slice(5);
+      else if (choice === 'correct') pick = s.correct;
       else if (choice === 'wrong') pick = inplane[0];
       else if (choice === 'wrong2') { pick = inplane[1]; if (!pick) { pick = inplane[0]; note = ' (no 2nd in-plane option: used 1st)'; } }
       else if (choice === 'plane') { pick = plane[0]; if (!pick) { pick = inplane[0]; note = ' (contraction threat: no plane option, used wrong)'; } }
       const tag = `${F.id} [${o.join(' | ')}]${F.reask ? ' (re-ask)' : ''}`;
-      if (choice === 'timeout') { F.timer = 0.01; return 'timeout / ' + tag; }
+      if (choice === 'timeout') { F.timer = 0.01; F.readIn = 0; return 'timeout / ' + tag; }
       L.choose(o.indexOf(pick));
       return pick + ' / ' + tag + note;
     }, choice);
@@ -124,6 +138,24 @@ const SHOTS = +val('shots', 3);
 
   let n = 0;
   for (const id of threats) {
+    if (choices.includes('every')) {
+      const sets = await pg.evaluate((id) => {
+        const C = window.SEHS.content, s = C.DRONE_THREATS[id];
+        const wrongs = s.kind === 'movement' ? s.distractors.slice() : (s.options || ['Concentric', 'Eccentric', 'Isometric']).filter((o) => o !== s.correct);
+        if (s.kind === 'movement') wrongs.push(s.planeWrong[0]);
+        return wrongs.map((w) => {
+          const pad = s.kind === 'movement' ? s.planeWrong.filter((q) => q !== w) : [];
+          return { pick: w, options: [s.correct, w].concat(pad).slice(0, Math.max(3, s.kind === 'movement' ? 4 : 3)) };
+        });
+      }, id);
+      for (const set of sets) {
+        await heal();
+        await pg.evaluate(() => { game.level.reask = []; game.level.debug.skip(0.6); });
+        await freeze(id, 'pick:' + set.pick, `t${String(n).padStart(2, '0')}-${id}-${set.pick.replace(/\s+/g, '_')}`, set.options);
+        n++;
+      }
+      continue;
+    }
     for (const ch of choices) {
       await heal();
       await pg.evaluate(() => { game.level.reask = []; game.level.debug.skip(0.6); });
@@ -235,6 +267,35 @@ const SHOTS = +val('shots', 3);
       await pg.waitForTimeout(500);
       log('  launched ->', JSON.stringify(await pg.evaluate(() => ({ mode: game.level.mode, wave: game.level.wave, swatDmg: game.level.eff.swatDmg, dmgMul: game.level.eff.dmgMul }))));
     }
+  }
+
+  const CMP = +val('compare', 0);
+  if (CMP) {
+    const runs = [];
+    for (const kind of ['idle', 'idle-targeting', 'active']) {
+      const r = await pg.evaluate(({ kind, secs }) => {
+        const L = new window.SEHS.DroneDefense(window.game, { wave: 2 });
+        window.game.level = L;
+        L.debug.skip(3);
+        const e0 = L.energy;
+        let lost = 0, netted = 0, prevE = L.energy, strikes = 0;
+        for (let t = 0; t < secs; t += 1 / 30) {
+          if (kind !== 'idle' && L.mode === 'decide') L.choose(L.freeze.options.indexOf(L.freeze.st.correct));
+          if (L.mode === 'failed') L.retry();
+          if (kind === 'active' && L.mode === 'play' && Math.round(t * 30) % 9 === 0) { L.focusReq = true; strikes++; }
+          L.update(1 / 30);
+          if (L.energy < prevE) lost += prevE - L.energy;
+          prevE = L.energy;
+          if (L.mode === 'lost' || L.mode === 'summary' || L.mode === 'clear') break;
+        }
+        return { kind, mode: L.mode, energyLost: lost, energyLeft: L.energy, shutdown: L.mode === 'lost' && L.lostWhy === 'shutdown', allies: L.allies.map((a) => a.state).join(','), netted: L.ws.netted, kills: L.ws.kills, repairPct: Math.round(100 * L.repair / L.cfg.need), freezes: L.ws.freezes, spacePresses: strikes };
+      }, { kind, secs: CMP });
+      runs.push(r);
+      await pg.waitForTimeout(200);
+      await shot(`cmp-${r.kind}`);
+    }
+    log('compare idle vs active (wave 2, ' + CMP + ' s):');
+    runs.forEach((r) => log('  ' + JSON.stringify(r)));
   }
 
   await pg.waitForTimeout(600);

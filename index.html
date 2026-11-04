@@ -57,6 +57,7 @@
           <label><input type="checkbox" id="opt-sound"> Sound (M)</label>
           <label><input type="checkbox" id="opt-reduce"> Reduce flashing &amp; shake</label>
           <label><input type="checkbox" id="opt-labels"> Label all muscles (L)</label>
+          <label title="Drone Defense: freezes wait for your answer (logged as assist)"><input type="checkbox" id="opt-practice"> Practice (untimed freezes)</label>
         </div>
       </div>
     </div>
@@ -90,10 +91,11 @@
         <h2 id="f-head"></h2>
         <p class="you">You chose: <b id="f-choice"></b></p>
         <p id="f-explain"></p>
-        <div class="correct"><div class="kicker green">CORRECT RESPONSE</div><p id="f-correct"></p></div>
+        <div class="correct"><div class="kicker green">CORRECT RESPONSE</div><p id="f-correct"></p><div id="f-more" class="hidden"></div></div>
         <p id="f-cost"></p>
         <div class="row">
           <button id="btn-fail-menu" class="ghost">Menu</button>
+          <button id="btn-more" class="ghost hidden">More (M)</button>
           <button id="btn-retry" class="primary">Reboot at this hazard (R)</button>
         </div>
       </div>
@@ -127,6 +129,9 @@
     <!-- Drone Defense workshop root (js/workshop.js renders into it) -->
     <div id="workshop" class="hidden"></div>
 
+    <!-- js/progress.js overlays (Movement Codex, session report) -->
+    <div id="progress-root" class="hidden"></div>
+
     <!-- Pause -->
     <div id="pause" class="screen hidden">
       <div class="panel">
@@ -139,6 +144,12 @@
           <tr><td>Transverse</td><td>Longitudinal / vertical</td><td>Upper / lower</td><td>Medial &amp; lateral rotation, trunk rotation, pronation, supination, horizontal ab/adduction</td></tr>
         </table>
         <p class="dim">Contractions: <b>isotonic</b> = length changes (<b>concentric</b> shortens, <b>eccentric</b> lengthens) · <b>isometric</b> = no change in length.</p>
+        <div class="row dd-only" id="pause-dd">
+          <label class="dd-toggle"><input type="checkbox" id="pause-practice"> Practice (untimed freezes)</label>
+          <span class="spacer"></span>
+          <button id="btn-pause-codex" class="ghost">📖 Codex</button>
+          <button id="btn-pause-report" class="ghost">📊 Report</button>
+        </div>
         <div class="row">
           <button id="btn-pause-menu" class="ghost">Quit to menu</button>
           <button id="btn-pause-tut" class="ghost">📘 Tutorial</button>
