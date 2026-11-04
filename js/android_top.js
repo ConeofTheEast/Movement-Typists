@@ -62,7 +62,7 @@
     upper: 40, fore: 36, hand: 14,
     ribW: 24, ribD: 14,
     pelW: 20, pelD: 10, pelZ: -46,
-    hipX: 10, kneeZ: -74, ankleZ: -100, foot: 23, heel: 6,
+    hipX: 10, kneeZ: -74, ankleZ: -100, foot: 24, heel: 6,
     headR: 10.5, headZ: 16, headY: 1,
   };
   const PERSP = 0.0016; // perspective: k(z) = 1 + z * PERSP
@@ -73,7 +73,7 @@
   const TOP_KEYS = ['facing', 'trunk', 'head', 'slump', 'stance', 'hipL', 'hipR'];
   const POSE_KEYS = TOP_KEYS.concat(ARM_KEYS.map((k) => 'L.' + k), ARM_KEYS.map((k) => 'R.' + k));
   const BASE = {
-    facing: 0, trunk: 0, head: 0, slump: 0, stance: 21, hipL: 0, hipR: 0,
+    facing: 0, trunk: 0, head: 0, slump: 0, stance: 20, hipL: 0, hipR: 0,
     L: { fl: 0, hz: 0, rot: 0, el: 20, pr: 0 },
     R: { fl: 0, hz: 0, rot: 0, el: 20, pr: 0 },
   };
@@ -163,11 +163,11 @@
   //        rot (+ lateral / - medial), el (elbow flexion), pr (+ supination / - pronation)]
   const HANG = [0, 0, 0, 12, 0]; // hanging, elbow nearly straight, palm to thigh
   const TUCK = [0, 0, 0, 90, 0]; // elbow tucked at 90, forearm forward, thumb up
-  const GUARD = [8, 0, -22, 100, -20]; // relaxed guard: forearms forward-in
+  const GUARD = [10, 0, -6, 100, -15]; // guard: elbows in, forearms forward
   const RAISED = [90, 0, 0, 10, 0]; // raised straight forward
   const LIB = {
-    idle: mk({ arms: GUARD, hip: 6, stance: 22 }),
-    guard: mk({ arms: GUARD, hip: 6, stance: 22 }),
+    idle: mk({ arms: GUARD, hip: 6, stance: 19 }),
+    guard: mk({ arms: GUARD, hip: 6, stance: 19 }),
     // horizontal ADDUCTION swat (right arm sweeps across the chest; pec major)
     crossSwatPrep: mk({ trunk: 20, armR: [90, 80, 0, 12, 0], armL: GUARD, stance: 24 }),
     crossSwat: mk({ trunk: -20, armR: [90, -30, 0, 10, 0], armL: GUARD, stance: 24 }),
@@ -286,7 +286,7 @@
       wrong: { Concentric: W(st, { R: { rot: -70 }, mus: { 'subscapularis:R': ['c', 1], 'pectoralis_major:R': ['c', 0.6] } }),
         Eccentric: W(st, { R: { rot: 70 }, mus: { 'subscapularis:R': ['e', 0.9], 'pectoralis_major:R': ['e', 0.5], 'infraspinatus:R': ['c', 0], 'deltoid_posterior:R': ['c', 0] } }) } };
     // hip pivot: heel pivot, toes swing OUT (hip lateral rotation)
-    st = mk({ arms: GUARD, hipR: 0, hipL: 4, stance: 24 });
+    st = mk({ arms: HANG, hipR: 0, hipL: 4, stance: 22 });
     THREATS.hipPivot = { stage: st, timeout: st, opts: { feetBold: 'R' },
       success: W(st, { hipR: 40, mus: { 'gluteus_maximus:R': ['c', 1], 'hip_rotators:R': ['c', 0.8] } }),
       wrong: { 'Medial rotation': W(st, { hipR: -35 }), Rotation: W(st, { trunk: 40 }) } };
@@ -404,10 +404,10 @@
       A.fd = fd;
       A.hip = [g * DIM.hipX, 1, DIM.pelZ - 4];
       const st = p.stance != null ? p.stance : 21;
-      A.heel = [g * st, 4, DIM.ankleZ];
+      A.heel = [g * st, 9, DIM.ankleZ];
       A.ankle = add(A.heel, mul(fd, DIM.heel));
       A.toe = add(A.ankle, mul(fd, DIM.foot));
-      A.knee = [g * (DIM.hipX + st) * 0.5 + fd[0] * 14, 2 + fd[1] * 14, DIM.kneeZ];
+      A.knee = [g * (DIM.hipX + st) * 0.5 + fd[0] * 15, 5 + fd[1] * 15, DIM.kneeZ];
       if (malT && (malPart === 'leg' + s)) {
         // leg lifts out of the plane (hip flexion / abduction): foot rises toward the camera
         const lift = malT;
