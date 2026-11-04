@@ -2,52 +2,64 @@
  * android_top.js: ANATOMICAL ANDROID RIG, TOP-DOWN (bird's-eye) VIEW
  * -------------------------------------------------------------------
  * Owned by the "anatomy-animator" agent. Used by the transverse level
- * (Drone Defense): the screen IS the transverse plane and the longitudinal
- * axis points out of the screen (drawn as the ⊙ glyph).
+ * (Drone Defense, GAME_DESIGN §4): the screen IS the transverse plane and the
+ * longitudinal axis points out of the screen (drawn as the ⊙ glyph).
+ * Exports SEHS.AndroidTop (alias SEHS.TopAndroid) and SEHS.TopPose.
  *
  * Same art language as js/android.js (titanium bones, graphite joints, cyan
  * core + visor, red muscles that swell in 1/8 steps and recolour by
- * contraction type c/e/i).
+ * contraction type c/e/i). Hidden (deep) muscles are x-ray ghosts that
+ * brighten when they work (obliques, subscapularis, hip muscles).
  *
  * The skeleton is solved in 3D (x = right, y = forward, z = up, origin at the
  * pelvis centre, shoulder height z = 0) and projected straight down with a
- * slight perspective (higher parts drawn a little bigger), so a hanging upper
- * arm is seen end-on and a forearm held forward is seen full length.
+ * slight perspective, so a hanging upper arm is seen end-on and a forearm held
+ * forward is seen full length. A hand hanging straight down is drawn as a
+ * call-out just outside the shoulder (tutorial convention).
  *
- * Pose params (all angles in DEGREES; L / R = the android's left / right):
- *   facing     whole-body heading in the world. 0 = facing up the screen,
- *              + = counter-clockwise on screen (turning to its left).
- *   trunk      spine rotation of the thorax relative to the pelvis
- *              (+ = to the LEFT / counter-clockwise, - = to the right).
- *   head       neck rotation relative to the thorax (+ = left).
- *   slump      0..1 head drops forward, shoulders roll in (shutdown).
- *   stance     half-distance between the feet (unscaled px, default 24).
- *   shElevX    arm elevation (0 = hanging at the side, 90 = at shoulder
- *              height). Horizontal ab/adduction reads best at 90, shoulder
- *              rotation reads best at ~0-20 with the elbow at 90.
- *   shHAbdX    horizontal abduction (+) / adduction (-) of the upper arm,
- *              0 = pointing straight forward.
- *   shRotX     shoulder lateral (+) / medial (-) rotation about the humerus
- *              long axis (with the elbow at 90 the forearm swings out / in).
- *   elX        elbow flexion (+).
- *   foreX      radio-ulnar: supination (+) / pronation (-), -90..+90.
- *              +90 = palm up (cyan palm emitter), -90 = palm down (dark
- *              dorsum plate), 0 = thumb up.
- *   hipRotX    hip lateral (+) / medial (-) rotation (foot + kneecap turn).
+ * Pose keys (GAME_DESIGN §4.2a; degrees; same sign rule on both sides):
+ *   trunk      spine rotation of the shoulders over the pelvis
+ *              (+ = turns RIGHT, clockwise from above)
+ *   L / R      arm objects { fl, hz, rot, el, pr }
+ *     fl       arm elevation: 0 = hanging, 90 = raised to horizontal
+ *     hz       horizontal angle of the raised arm: 0 = forward,
+ *              + = horizontal abduction (outward), - = adduction (across)
+ *     rot      shoulder rotation: + lateral / - medial (hanging arm with the
+ *              elbow at 90: forearm swings out / in across the belly)
+ *     el       elbow flexion
+ *     pr       radio-ulnar: 0 = mid-position (thumb forward, palm to thigh),
+ *              + supination, - pronation (elbow 90: +90 palm up = cyan palm
+ *              emitter, -90 palm down = dark dorsum plate)
+ *   hipL, hipR hip rotation (+ lateral: toes turn out; heel is the pivot)
+ *   extra:     head (neck rotation, + right), slump 0..1 (shutdown),
+ *              stance (half foot spacing, px), facing (whole body, clockwise
+ *              on screen; the pelvis normally faces screen-up, 0)
+ *   mus        { muscleId | 'muscleId:L' | 'muscleId:R': ['c'|'e'|'i', 0..1] }
+ *              (a bare id applies to both sides; value 0 suppresses the
+ *              automatic concentric glow)
  *
  * Muscle shortening is computed from the joint params with a moment-arm
- * model: length ratio = 1 + sum(k * delta angle in rad) (see MUSCLES[].k),
- * so it is always on the anatomically right side of each joint. The path
- * drawn on screen comes from the 3D attachment points.
+ * model: length ratio = 1 + sum(k * delta angle in rad) (MUSCLES[].k), so it is
+ * always on the anatomically right side of each joint. Muscles that shorten
+ * glow concentric automatically; overrides come from pose.mus.
  *
- * draw(ctx, pose, x, y, opts):  (x, y) = pelvis centre on screen
- *   scale (1 = ~110 px figure, shoulders ~90 px; allies ~0.6), status
- *   ('ok'|'warn'|'fail'), neutral (white muscles), damage {head, armL, armR,
- *   torso, legs} 0..1 (or true, or an Array/Set of names), reduce, visor
- *   (ally visor colour), allyRole (role badge colour), labels (true |
- *   'active'), highlight { joints: ['shoulderR', 'trunk', 'foreL', 'hipR',
- *   'elbowL', ...], arcs: true, dir: 'ccw'|'cw' }.
+ * draw(ctx, pose, x, y, opts): (x, y) = pelvis centre on screen. opts:
+ *   scale (1 = shoulder span 74 px, raised arm ~92 px; allies ~0.6)
+ *   status 'ok'|'warn'|'fail', neutral (white muscles), reduce, visor (colour),
+ *   allyRole (badge colour), labels (true | 'active'), labelOnly, labelSide
+ *   damage { head, armL, armR, torso, legL, legR } 0..1 (or true; 'legs' = both;
+ *          or an Array/Set of names)
+ *   highlight { joints: ['shoulderR','trunk','foreR','hipR','elbowL',...],
+ *               arcs: true, dir: 'cw'|'ccw' }  (⊙ glyph + rotation arc)
+ *   malfunction { part: 'armL'|'armR'|'forearmL'|'forearmR'|'handX'|'legL'|
+ *               'legR'|'trunk', t: 0..1 }  plane error: the limb lifts out of
+ *               the screen plane (foreshortened, scaled up, jitter, sparks)
+ *   launcher 'L'|'R' (disc launcher on that forearm), lockHand 'L'|'R'
+ *   (padlock glyph: busy hand), feetBold 'L'|'R'|true (bold foot outline,
+ *   blade on the outer forefoot, heel-pivot ring)
  *   Returns the rig; rig.sparks = [[x, y], ...] spark points (FX layer).
+ * Threat poses: TopPose.THREATS[id] = { stage, success, timeout,
+ *   wrong: { '<option>': pose }, opts }, or TopPose.threat(id, key).
  */
 (function () {
   'use strict';
@@ -299,12 +311,17 @@
       wrong: { Concentric: ramConc, Isotonic: ramConc,
         Isometric: W(st, { facing: 30, mus: { 'pectoralis_major:R': ['i', 0.95], 'deltoid_anterior:R': ['i', 0.7] } }) } };
   })();
+  // correct option per threat (GAME_DESIGN §4.4c), so threat(id, correctText) works
+  const CORRECT = { netterOnAlly_left: 'Horizontal abduction', netterOnAlly_right: 'Horizontal adduction', crossSwat: 'Horizontal adduction',
+    backhandSwat: 'Horizontal abduction', diveBehind: 'Rotation', spineTwist: 'Rotation', palmShield: 'Pronation', palmCatch: 'Supination',
+    discWindup: 'Lateral rotation', discThrow: 'Medial rotation', discSnap: 'Concentric', tetherPull: 'Isometric', hipPivot: 'Lateral rotation', heavyCatch: 'Eccentric' };
+  for (const id in CORRECT) THREATS[id].correct = CORRECT[id];
   // threat(id, key): key = 'stage' | 'success' | 'timeout' | option text
   // (the correct option text maps to 'success'). Returns a fresh copy.
   function threat(id, key) {
     const T = THREATS[id];
     if (!T) return mk();
-    const p = T[key] || (T.wrong && T.wrong[key]) || ((SEHS.content && SEHS.content.DRONE_THREATS && SEHS.content.DRONE_THREATS[id] && SEHS.content.DRONE_THREATS[id].correct === key) ? T.success : null) || T.stage;
+    const p = T[key] || (T.wrong && T.wrong[key]) || (key === T.correct ? T.success : null) || T.stage;
     const o = clone(p); o.mus = p.mus; return o;
   }
   // flat aliases in LIB: '<id>.stage', '<id>.success', '<id>.timeout', '<id>.<option>'
@@ -393,7 +410,7 @@
       // A hand hanging straight down is hidden under the shoulder from above,
       // so it is drawn as a call-out just outside the shoulder (as in the
       // tutorial's palm view) with a dashed leader. A.handVis = drawn centre.
-      A.endOn = Math.abs(A.u[2]) > 0.8 && Math.abs(A.n[2]) < 0.5;
+      A.endOn = A.u[2] < -0.8 && Math.abs(A.n[2]) < 0.5;
       A.handVis = A.endOn ? add(A.sh, add(T([g * 24, 0, 0]), [0, 0, -6])) : A.hand;
       A.clav = T([g * 5, 11 + sl * 3, -3 - sl * 3]); // sternoclavicular end
       A.scap = T([g * 16, -11 + sl * 2, -8]);
@@ -952,8 +969,8 @@
       const pc = o.visor && (o.status || 'ok') === 'ok' ? o.visor : '#56e0ff';
       ctx.save();
       ctx.translate(c[0], c[1]); ctx.rotate(ang);
-      // emitter glow fan out of the palm
-      if (!CHR) {
+      // emitter glow fan out of the palm (off when shut down)
+      if (!CHR && (R.p.slump || 0) < 0.7) {
         const gr = ctx.createLinearGradient(Th / 2, 0, Th / 2 + 18 * k, 0);
         gr.addColorStop(0, 'rgba(86,224,255,0.55)'); gr.addColorStop(1, 'rgba(86,224,255,0)');
         ctx.fillStyle = gr;
