@@ -59,6 +59,7 @@
           <label><input type="checkbox" id="opt-labels"> Label all muscles (L)</label>
           <label title="Drone Defense: freezes wait for your answer (logged as assist)"><input type="checkbox" id="opt-practice"> Practice (untimed freezes)</label>
         </div>
+        <div class="fb-row"><button id="btn-feedback" class="ghost small">💬 Send feedback to your teacher</button></div>
       </div>
     </div>
 
@@ -108,8 +109,9 @@
         <h2>The android is out of the factory.</h2>
         <div id="w-stats" class="stats"></div>
         <div id="w-review"></div>
-        <p class="dim">Next protocol (Transverse · Drone Defense) is paused in development.</p>
+        <p class="dim">Next protocol: Drone Defense (transverse plane), on the menu.</p>
         <div class="row">
+          <button id="btn-win-feedback" class="ghost">💬 Feedback</button>
           <button id="btn-win-menu" class="ghost">Menu</button>
           <button id="btn-again" class="primary">Run a new factory</button>
         </div>
@@ -151,6 +153,7 @@
           <button id="btn-pause-report" class="ghost">📊 Report</button>
         </div>
         <div class="row">
+          <button id="btn-pause-feedback" class="ghost">💬 Feedback</button>
           <button id="btn-pause-menu" class="ghost">Quit to menu</button>
           <button id="btn-pause-tut" class="ghost">📘 Tutorial</button>
           <button id="btn-resume" class="primary">Resume (P)</button>
@@ -172,6 +175,8 @@
   <script src="js/progress.js"></script>
   <script src="js/transverse.js"></script>
   <script src="js/tutorial.js"></script>
+  <script src="js/feedback-config.js"></script>
+  <script src="js/feedback.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

@@ -530,7 +530,7 @@
 
     page_play() {
       const st = this.lv.status;
-      const note = st === 'playable' ? '' : st === 'design' ? '<div class="callout warn">This level is still being built. Use this tutorial as review for now.</div>' : '<div class="callout warn">This level is PAUSED in development. Use this tutorial as review only.</div>';
+      const note = st === 'playable' ? '' : st === 'design' || st === 'locked' ? '<div class="callout warn">This level is still being built. Use this tutorial as review for now.</div>' : '<div class="callout warn">This level is PAUSED in development. Use this tutorial as review only.</div>';
       return `${note}<ul class="play">${this.T.play.map((p) => `<li>${p}</li>`).join('')}</ul>
         <div class="callout">The axis name in the top-left corner switches between its different names every few seconds. Learn all of them.</div>
         ${st === 'playable' ? '<p class="dim"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>P</kbd> pause / reference · <kbd>L</kbd> muscle labels · <kbd>M</kbd> sound · <kbd>R</kbd> reboot</p>' : ''}`;

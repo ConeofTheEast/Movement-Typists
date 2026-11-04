@@ -1120,7 +1120,7 @@
     },
   };
 
-  // Level select metadata (menu). Status: 'playable' | 'design' | 'paused'
+  // Level select metadata (menu). Status: 'playable' | 'design' | 'locked' | 'paused'
   const LEVELS = [
     {
       id: 'frontal',
@@ -1128,7 +1128,7 @@
       title: 'Precision Lab',
       tag: 'FRONTAL PLANE · SAGITTAL AXIS',
       blurb: 'Inside the factory. Scientists test and study the android on a precision wall: abduct or adduct one limb to reach, then turn the palm to press. Every error earns a shock. Run out of energy and the android shuts down.',
-      status: 'design',
+      status: 'locked',
     },
     {
       id: 'sagittal',

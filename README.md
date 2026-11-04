@@ -14,7 +14,7 @@ To host it for a class, enable **GitHub Pages** on this repo and share the link.
 
 | Level | Plane (= the screen) | Status |
 |---|---|---|
-| Precision Lab | Frontal · sagittal axis | In design |
+| Precision Lab | Frontal · sagittal axis | Locked (coming later) |
 | **Factory Escape** | **Sagittal · frontal axis** | **Playable** |
 | **Drone Defense** | **Transverse · longitudinal axis** | **Playable** |
 

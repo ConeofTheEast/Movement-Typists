@@ -316,7 +316,7 @@
     C.LEVELS.forEach((lv) => {
       const card = document.createElement('div');
       card.className = `level ${lv.status}`;
-      const badge = lv.status === 'playable' ? 'PLAYABLE' : lv.status === 'design' ? 'IN DESIGN' : 'PAUSED';
+      const badge = lv.status === 'playable' ? 'PLAYABLE' : lv.status === 'locked' ? '🔒 LOCKED' : lv.status === 'design' ? 'IN DESIGN' : 'PAUSED';
       let extra = '', playLbl = 'Play ▶';
       if (lv.id === 'transverse' && SEHS.DroneDefense) {
         const sv = SEHS.DroneDefense.SaveIO.load();
@@ -329,8 +329,9 @@
         }
       }
       card.innerHTML = `<div class="badge">${badge}</div><div class="lv-plane">${lv.tag}</div><h3>${lv.title}</h3><p>${lv.blurb}</p>
-        <div class="lv-btns"><button class="ghost small" data-act="tut">📘 Tutorial</button>${lv.status === 'playable' ? `<button class="primary small" data-act="play">${playLbl}</button>` : ''}</div>${extra ? `<div class="lv-btns">${extra}</div>` : ''}`;
-      card.querySelector('[data-act="tut"]').addEventListener('click', () => { Audio.init(); openTutorial(lv.id, false); });
+        <div class="lv-btns">${lv.status === 'locked' ? '<span class="lv-locked">Locked: coming in a later update.</span>' : '<button class="ghost small" data-act="tut">📘 Tutorial</button>'}${lv.status === 'playable' ? `<button class="primary small" data-act="play">${playLbl}</button>` : ''}</div>${extra ? `<div class="lv-btns">${extra}</div>` : ''}`;
+      const tb = card.querySelector('[data-act="tut"]');
+      if (tb) tb.addEventListener('click', () => { Audio.init(); openTutorial(lv.id, false); });
       const pb = card.querySelector('[data-act="play"]');
       if (pb) pb.addEventListener('click', () => { Audio.init(); openTutorial(lv.id, true); });
       const fb = card.querySelector('[data-act="fresh"]');
@@ -461,6 +462,17 @@
   $('btn-win-menu').addEventListener('click', toMenu);
   $('btn-resume').addEventListener('click', togglePause);
   $('btn-pause-menu').addEventListener('click', toMenu);
+  // student feedback → teacher's Google Form (js/feedback-config.js)
+  function feedbackGame() {
+    const lv = game.level;
+    if (game.state === 'menu' || !lv) return 'Kinetic Escape (menu)';
+    if (lv.kind === 'drone') { const w = lv.wave || (lv.save && lv.save.wave); return 'Drone Defense' + (w ? ` · wave ${w}` : ''); }
+    return 'Factory Escape';
+  }
+  function openFeedback() { if (SEHS.Feedback) SEHS.Feedback.open({ game: feedbackGame() }); }
+  $('btn-feedback').addEventListener('click', openFeedback);
+  $('btn-pause-feedback').addEventListener('click', openFeedback);
+  $('btn-win-feedback').addEventListener('click', openFeedback);
   $('pause-btn').addEventListener('click', togglePause);
   $('opt-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; Audio.setMuted(!settings.sound); saveSettings(); });
   $('opt-reduce').addEventListener('change', (e) => { settings.reduce = e.target.checked; game.fx.reduce = settings.reduce; saveSettings(); });
