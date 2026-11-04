@@ -134,7 +134,7 @@
   const CONTRACTIONS = {
     concentric: { id: 'c', name: 'Concentric', letter: 'C', color: '#ff6a3d', family: 'isotonic', def: 'The muscle SHORTENS while producing force (muscle force > resistance).', example: 'Lifting the dumbbell in a biceps curl: the biceps shortens.' },
     eccentric: { id: 'e', name: 'Eccentric', letter: 'E', color: '#4ea8ff', family: 'isotonic', def: 'The muscle LENGTHENS while producing force, braking or controlling a movement (muscle force < resistance).', example: 'Lowering the dumbbell slowly; the quadriceps when landing from a jump.' },
-    isometric: { id: 'i', name: 'Isometric', letter: 'I', color: '#ffc53d', family: 'isometric', def: 'The muscle produces force WITHOUT changing length, so the joint does not move (muscle force = resistance).', example: 'Holding the dumbbell still at 90°; holding a plank.' },
+    isometric: { id: 'i', name: 'Isometric', letter: 'I', color: '#ffc53d', family: 'isometric', def: 'The muscle produces force WITHOUT changing length, so the joint does not move (muscle force = resistance).', example: 'Holding the dumbbell still at 90°; holding a plank; standing under a closing blast door to keep it open.' },
   };
   function contractionLabel(key) {
     const c = CONTRACTIONS[key];
@@ -187,9 +187,13 @@
   // ---------------------------------------------------------------
   // SAGITTAL LEVEL: obstacle question bank
   //   kind: 'movement'    -> options = correct + sagittalWrong + 2 non-sagittal distractors
-  //   kind: 'contraction' -> options = concentric / eccentric / isometric
+  //   kind: 'contraction' -> options = concentric / eccentric / isometric,
+  //                          unless the stage lists its own `options` array
+  //                          (e.g. the door adds 'Isotonic').
   // Fail text is keyed by the wrong option. Non-sagittal choices use
   // planeFailText() below (robot malfunction + screen crack).
+  // Optional `fatal: true` on a fail entry = full explosion + checkpoint
+  // (hybrid damage system); otherwise the mistake costs 1 energy cell.
   // ---------------------------------------------------------------
   const LEG_DISTRACTORS = ['Abduction', 'Adduction', 'Medial rotation', 'Lateral rotation'];
   const ARM_DISTRACTORS = ['Abduction', 'Adduction', 'Horizontal abduction', 'Horizontal adduction', 'Medial rotation', 'Pronation'];
@@ -388,6 +392,51 @@
         },
       ],
     },
+
+    door: {
+      title: 'BLAST DOOR',
+      tier: 2,
+      stages: [
+        {
+          kind: 'contraction',
+          limb: 'arms',
+          joints: ['shoulder', 'elbow', 'knee', 'hip'],
+          focusMuscle: 'triceps_brachii',
+          prompt: 'A blast door is sliding shut. You step under it, arms up and knees bent, so your friends can run through. Which contraction type must your arm and leg muscles perform?',
+          correct: 'Isometric',
+          options: ['Isometric', 'Concentric', 'Eccentric', 'Isotonic'],
+          success: {
+            headline: 'ISOMETRIC',
+            detail: 'Muscle tension rose, but muscle length and joint angles stayed the same. Your force equalled the weight of the door, so it stopped moving and your friends escaped underneath.',
+            deeper: 'Going deeper: "isometric" means "same length". The anterior deltoid, triceps brachii, quadriceps and gluteus maximus all produce force, yet no joint moves.',
+            agonists: ['deltoid_anterior', 'triceps_brachii', 'quadriceps', 'gluteus_maximus'],
+            contraction: 'isometric',
+          },
+          fail: {
+            Concentric: {
+              headline: 'SHOVED UP, THEN SLAMMED',
+              explain: 'A concentric contraction SHORTENS the muscle. The triceps and anterior deltoids shortened and the arms shoved upward, so the elbow and shoulder angles changed. The door lurched up, then the motor slammed it down on the android. The door needs an ISOMETRIC contraction: the triceps, deltoids, quadriceps and gluteus maximus make force without changing length.',
+              fatal: true,
+            },
+            Eccentric: {
+              headline: 'CRUSHED UNDER THE DOOR',
+              explain: 'An eccentric contraction LENGTHENS the muscle under tension. The triceps and quadriceps stretched under the load, so the elbows and knees slowly bent and the door crushed down on the android. The door needs an ISOMETRIC contraction: muscle force equals the load, so muscle length and joint angles stay the same.',
+              fatal: true,
+            },
+            Isotonic: {
+              headline: 'JOINTS MOVED: DOOR CAME DOWN',
+              explain: 'Isotonic is the umbrella name for contractions where the muscle CHANGES LENGTH: concentric (shortening) and eccentric (lengthening). Either way the elbows and knees moved, so the door shifted and slammed down on the android. The door needs an ISOMETRIC contraction: the triceps, anterior deltoid, quadriceps and gluteus maximus make force with no change in length.',
+              fatal: true,
+            },
+          },
+          timeout: {
+            headline: 'DOOR SHUT',
+            explain: 'No command reached the muscles, so the door kept sliding down and closed. Keeping it open needs an ISOMETRIC contraction: the arm and leg muscles make force equal to the door\'s weight without changing length.',
+            as: 'Eccentric',
+          },
+        },
+      ],
+    },
   };
 
   function planeOf(movement) {
@@ -411,7 +460,7 @@
       plane: 'frontal',
       title: 'Precision Lab',
       tag: 'FRONTAL PLANE · SAGITTAL AXIS',
-      blurb: 'Before the escape. Climb the test wall with individual limb control: abduct or adduct to reach, then turn the palm to press. Every error earns a shock; too many and the android shuts down.',
+      blurb: 'Inside the factory. Scientists test and study the android on a precision wall: abduct or adduct one limb to reach, then turn the palm to press. Every error earns a shock. Run out of energy and the android shuts down.',
       status: 'design',
     },
     {
@@ -419,7 +468,7 @@
       plane: 'sagittal',
       title: 'Factory Escape',
       tag: 'SAGITTAL PLANE · FRONTAL AXIS',
-      blurb: 'Side-scrolling escape. Time slows at every hazard: choose the right movement or contraction before the timer ends.',
+      blurb: 'The escape. The android and its friends break out of the factory. Time slows at every hazard: choose the right movement or contraction before the timer ends.',
       status: 'playable',
     },
     {
@@ -427,7 +476,7 @@
       plane: 'transverse',
       title: 'Drone Defense',
       tag: 'TRANSVERSE PLANE · LONGITUDINAL AXIS',
-      blurb: 'Top-down. The android is free, but capture drones are closing in.',
+      blurb: 'Top-down, outside the factory. The android has escaped, but capture drones are closing in.',
       status: 'paused',
     },
   ];
@@ -445,8 +494,12 @@
         'Choose the correct MOVEMENT (e.g. flexion or extension) or CONTRACTION (concentric, eccentric or isometric) before the timer runs out. Click, or press 1–4.',
         'Wrong, but in the sagittal plane: the muscles do exactly what you chose, with the result you would expect.',
         'A movement from another plane (abduction, rotation and so on): the android malfunctions and the screen cracks.',
-        'After a failure you reboot at the same hazard. Hazards start simple and get harder.',
-        'Watch the other androids on the back catwalk. Not all of them make it.',
+        'The android has an ENERGY bar of 5 cells.',
+        'Small mistakes (a wrong answer at the lasers, ledge or trolley rail, a wrong-plane movement, or running out of time) damage part of the android. You lose 1 cell and get the SAME question again.',
+        'Fatal mistakes (falling into a hole, or being crushed by a door or crate) make the android explode. You go back to the last checkpoint.',
+        'Save your friends at the blast door to win back 1 cell. If energy reaches 0 the android shuts down and you go back to the checkpoint.',
+        'A wrong answer never skips a question. Hazards start simple and get harder.',
+        'Your friends, the other escaping androids, run on the back catwalk. If one fails it stumbles, its light turns red and you see "UNIT-07 DOWN".',
       ],
     },
     frontal: {
@@ -458,7 +511,7 @@
         demos: ['Pronation', 'Supination'],
       },
       play: [
-        'Before the escape: the android is forced to climb a test wall while scientists watch from behind the glass.',
+        'Inside the factory, before any escape: scientists are testing and studying the android. It must climb a test wall while they watch from behind the glass.',
         'Select one limb at a time, then choose ABDUCTION or ADDUCTION to reach the next hold or button.',
         'Turn the palm (pronation or supination) to press each button.',
         'Wrong answers do not restart the level. Instead the scientists SHOCK the android and it loses one battery cell.',
@@ -470,7 +523,7 @@
       camera: 'In this game your screen IS the transverse plane: you look down on the android from above. The axis it turns about points straight out of the screen (shown as ⊙).',
       demos: ['Rotation', 'Medial rotation', 'Lateral rotation', 'Horizontal abduction', 'Horizontal adduction', 'Pronation', 'Supination'],
       play: [
-        'After the escape, the free android must defend itself from capture drones using rotations and horizontal movements.',
+        'Outside the factory, after the escape, the free android must defend itself from capture drones using rotations and horizontal movements.',
         'This level is PAUSED in development. Use this tutorial as review only.',
       ],
     },
@@ -484,6 +537,7 @@
     { q: 'Jumping: what movement happens at the hips and knees as you push off?', a: 'Extension (gluteus maximus and quadriceps, concentric)' },
     { q: 'Landing from a jump: what type of contraction do the quadriceps perform?', a: 'Eccentric: they lengthen under tension to control knee flexion' },
     { q: 'Holding a dumbbell still with the elbow at 90°: what type of contraction is this?', a: 'Isometric: force with no change in muscle length' },
+    { q: 'Standing under a closing door, arms up and knees bent, to keep it from moving: what type of contraction do the arm and leg muscles perform?', a: 'Isometric: muscle force equals the load, so muscle length and joint angles stay the same' },
     { q: 'Which two contraction types are kinds of ISOTONIC contraction?', a: 'Concentric and eccentric' },
     { q: 'In which plane do pronation and supination of the forearm occur, and about which axis?', a: 'Transverse plane; longitudinal (vertical) axis' },
   ];
