@@ -40,6 +40,7 @@
   const D2R = Math.PI / 180, TAU = Math.PI * 2;
   const TRUCK = { x: 640, y: 628, scale: 1.62 };
   const SPAWN_R = 720;
+  const AUTO_TYPES = { scout: 1, swarm: 1 }; // fodder the android swats by itself
   const BASE_CAM = { Z: 1.1, cx: 640, cy: 366, sx: 640, sy: 360 };
   const BASE_FX = {
     freezeBonus: 0, sweepArc: 60, spinDmg: 2, pulseDmg: 1, pulseRadius: 60, swatDmg: 1, swatKnock: 40, windupMul: 1,
@@ -118,7 +119,7 @@
       n, boss, types, pool,
       drones: base.drones, every: base.every, sides: base.sides, target: base.target,
       timerBase: Math.max(5, 9 - 0.4 * (n - 1)), speedMul: 1,
-      need: boss ? 120 : 160 + 25 * (n - 1),
+      need: boss ? 120 : n === 1 ? 90 : 160 + 25 * (n - 1), // wave 1 is short: ~70 s, a freeze every ~20 s
       sub: n <= 10 ? UI.subsystems[n - 1] : UI.endlessSubsystems[(n - 11) % UI.endlessSubsystems.length],
       eliteChance: n >= 6 ? Math.min(0.4, 0.1 + 0.02 * n) : 0,
       newTypes: TYPE_ADD[n] && n > 1 ? TYPE_ADD[n].slice() : [],
@@ -174,6 +175,16 @@
   const WARDEN_PHASES = [['diveBehind', 'crossSwat'], ['tetherPull', 'discThrow'], ['palmShield', 'spineTwist']];
   const WARDEN_SUB = { crossSwat: 'heavyCatch', discThrow: 'discSnap', spineTwist: 'hipPivot' };
   const PLATE_NAMES = ['FRONT', 'LEFT', 'RIGHT'];
+
+  // muscles that shorten between two poses (concentric), for poses without mus
+  function autoMus(from, to) {
+    const mus = {};
+    AndroidTop.MUSCLES.forEach((m) => ['L', 'R'].forEach((s) => {
+      const d = AndroidTop.lenRatio(m, from, s) - AndroidTop.lenRatio(m, to, s);
+      mus[m.id + ':' + s] = d > 0.015 ? ['c', clamp(0.45 + d * 4, 0.45, 1)] : ['c', 0];
+    }));
+    return mus;
+  }
 
   // auto-action labels: the transverse movement names (curriculum names come from content)
   const MV = {};
@@ -263,8 +274,24 @@
       this.startWave(opts.wave || this.save.wave || 1);
     }
 
+    // seeded randomness from js/progress.js (class seed) when present
+    initRng() {
+      const P = SEHS.Progress;
+      this.rng = Math.random;
+      if (P && typeof P.rng === 'function') {
+        try {
+          const v = P.rng();
+          if (typeof v === 'function') this.rng = v;
+          else if (typeof v === 'number') this.rng = () => { const x = P.rng(); return typeof x === 'number' ? x : Math.random(); };
+        } catch (e) { /* unseeded */ }
+      }
+    }
+    pickR(a) { return a[Math.floor(this.rng() * a.length) % a.length]; }
+    rr(a, b) { return a + this.rng() * (b - a); }
+
     // ---------------- wave lifecycle ----------------
     startWave(n) {
+      this.initRng();
       this.wave = n;
       this.cfg = waveCfg(n);
       this.eff = effectsFor(this.save);
@@ -346,12 +373,12 @@
       // new types appear early so the scout intel promise holds
       cfg.newTypes.forEach((t) => { q.push(t); q.push(t); });
       while (q.length < cfg.drones) {
-        let r = Math.random() * wsum, t = types[0];
+        let r = this.rng() * wsum, t = types[0];
         for (const k of types) { r -= TYPE_W[k]; if (r <= 0) { t = k; break; } }
         q.push(t);
       }
       const head = q.splice(0, cfg.newTypes.length * 2);
-      shuffle(q);
+      for (let a = q.length - 1; a > 0; a--) { const b2 = Math.floor(this.rng() * (a + 1)); [q[a], q[b2]] = [q[b2], q[a]]; }
       // keep the new types within the first third of the wave
       head.forEach((t, i) => q.splice(Math.min(q.length, 1 + i * 2), 0, t));
       if (this.wave <= 2) { const i = q.indexOf('netter'); if (i > 1) { q.splice(i, 1); q.splice(1, 0, 'netter'); } }
@@ -361,21 +388,21 @@
     sideBearing() {
       const s = this.cfg.sides;
       const keys = Object.keys(s);
-      let tot = keys.reduce((a, k) => a + s[k], 0), r = Math.random() * tot, k0 = keys[0];
+      let tot = keys.reduce((a, k) => a + s[k], 0), r = this.rng() * tot, k0 = keys[0];
       for (const k of keys) { r -= s[k]; if (r <= 0) { k0 = k; break; } }
       const [a, b] = SIDE_RANGE[k0];
-      return angDiff(rand(a, b), 0);
+      return angDiff(this.rr(a, b), 0);
     }
 
     planNextSpawn() {
-      const type = this.spawnQueue.length ? this.spawnQueue.shift() : pick(this.cfg.types);
+      const type = this.spawnQueue.length ? this.spawnQueue.shift() : this.pickR(this.cfg.types);
       let th = this.sideBearing();
-      if (type === 'crawler') th = rand(-120, 120);
+      if (type === 'crawler') th = this.rr(-120, 120);
       const every = this.spawnQueue.length || this.endless ? this.cfg.every : this.cfg.every * 1.5;
       this.nextSpawn = { type, th, at: this.waveT + this.spawnT };
       // a quick opening so the camp is busy from the start, then the wave's pace
       this.spawned = (this.spawned || 0) + 1;
-      this.spawnT = every * rand(0.8, 1.15) * (this.spawned <= 3 ? 0.45 : 1);
+      this.spawnT = every * this.rr(0.8, 1.15) * (this.spawned <= 3 ? 0.45 : 1);
     }
 
     // ---------------- allies ----------------
@@ -787,7 +814,8 @@
     lancerFire(d) {
       const front = Math.abs(bearing(d.x, d.y)) <= 90;
       const hand = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, 'handR', 1);
-      const canShield = this.cd.palm <= 0 && !this.action && this.jamT <= 0;
+      // the shield flip only fires for a lancer you have targeted
+      const canShield = this.selected === d && this.cd.palm <= 0 && !this.action && this.jamT <= 0;
       this.beams.push({ x1: d.x, y1: d.y, x2: hand[0], y2: hand[1], t: 0, life: 0.25, col: '255,90,90', w: 5 });
       if (canShield) {
         this.startAction({ kind: 'shield', side: 'R', front }, d, false);
@@ -871,7 +899,7 @@
 
     // ---------------- director (§4.4a) ----------------
     canFreeze() {
-      return this.mode === 'play' && !this.rescue && !this.cfg.boss && this.waveT >= 15 && this.sinceFreeze >= 12 && this.freezesDone < this.cfg.target;
+      return this.mode === 'play' && !this.rescue && !this.cfg.boss && this.waveT >= (this.wave === 1 ? 12 : 15) && this.sinceFreeze >= 12 && this.freezesDone < this.cfg.target;
     }
 
     chooseThreat(ids) {
@@ -879,9 +907,9 @@
       const r = this.reask.find((id) => ids.includes(id));
       if (r) return r;
       const unseen = ids.filter((id) => this.seen[id] == null && !(this.save.threatStats[id] && this.save.threatStats[id].seen));
-      if (unseen.length) return pick(unseen);
+      if (unseen.length) return this.pickR(unseen);
       // endless: 50% weighted toward the lowest-accuracy ids in this save
-      if (this.wave >= 11 && Math.random() < 0.5) {
+      if (this.wave >= 11 && this.rng() < 0.5) {
         const acc = (id) => { const s = this.save.threatStats[id]; return s && s.seen ? (s.firstTryCorrect || 0) / s.seen : 0; };
         return ids.slice().sort((a, b) => acc(a) - acc(b))[0];
       }
@@ -911,8 +939,10 @@
         this.forceThreat(id, { elite: true });
         return;
       }
-      const expected = this.cfg.need / 1.3;
-      if (this.freezesDone < (this.cfg.target * this.waveT) / expected - 1) {
+      // even cadence: the wave's freeze target spread over its expected length
+      const expected = this.cfg.need / Math.max(0.8, this.repairRate() || 1.3);
+      const cadence = clamp(expected / (this.cfg.target + 0.5), 14, 40);
+      if (this.sinceFreeze >= cadence) {
         const id = this.chooseThreat(this.cfg.pool);
         if (id) this.forceThreat(id, { elite: true });
       }
@@ -1021,19 +1051,28 @@
       this.optionSets[id] = options.slice();
       let total = this.cfg.timerBase + (this.eff.freezeBonus || 0);
       if (o.boss) total = Math.max(4.5, total - 1);
-      total = Math.min(12, total);
+      total = Math.max(6, Math.min(12, total)); // floor: low calibration never cuts below 6 s
       if (this.debugTimer) total = this.debugTimer;
+      // read-in: the clock starts only after the prompt has had time to be read
+      const words = String(st.prompt).split(/\s+/).length;
+      const readIn = this.debugTimer ? 0 : Math.max(2, words / 4);
       // content names the ally the drawing normally uses (KITE / BOLT); when a
       // different ally stands in, the name follows the ally on screen
       const prefName = S.ally ? (C.ALLY_ROSTER.find((r) => r.id === S.ally.prefer) || {}).name : null;
-      const nm = (s) => (s && prefName && ally && ally.name !== prefName ? String(s).replace(new RegExp('\\b' + prefName + '\\b', 'g'), ally.name) : s);
+      const prefHere = prefName && this.allies.some((q) => q.name === prefName && q.state !== 'taken');
+      const sub = ally ? ally.name : prefHere ? prefName : 'your crewmate';
+      const nm = (s) => (s && prefName && sub !== prefName ? String(s).replace(new RegExp('\\b' + prefName + '\\b', 'g'), sub) : s);
       const T = TopPose.THREATS[id] || {};
       this.freeze = {
         id, st, S, drone: d, members, ally, o, options, total, timer: total, reask, t: 0, nm,
         fromPose: TopPose.clone(this.pl.pose), fromOff: [this.pl.ox, this.pl.oy],
-        stagePose: TopPose.threat(id, 'stage'), tOpts: T.opts || {}, beat: 0, lastSec: Math.ceil(total), boss: !!o.boss,
+        stagePose: TopPose.threat(id, 'stage'), tOpts: T.opts || {}, beat: 0, lastSec: Math.ceil(total), boss: !!o.boss, readIn, practice: this.practice(),
       };
-      this.freeze.cam = this.freezeCam(id, pos, ally);
+      // boss freezes: the panel goes on the side away from the Warden, and the
+      // camera keeps the Warden in frame
+      const wd = o.boss && this.warden && !this.warden.dead ? this.warden.d : null;
+      this.freeze.panelSide = wd ? (wd.x < AX ? 'right' : 'left') : S.side;
+      this.freeze.cam = this.freezeCam(id, pos, ally, this.freeze.panelSide, wd);
       this.action = null; this.pending = null;
       if (this.rescue) this.closeRescue();
       this.bubbles = [];
@@ -1047,7 +1086,7 @@
 
     // camera that fits the android, the threat drone and the ally inside the
     // half of the screen the decision panel leaves free
-    freezeCam(id, pos, ally) {
+    freezeCam(id, pos, ally, side, wd) {
       const S = THREAT_STAGE[id];
       const pts = [[AX - 62, AY - 62], [AX + 62, AY + 62]];
       const r = radiusOf(S.type) + 26;
@@ -1056,9 +1095,10 @@
       if (pos.members) pos.members.forEach((m) => add(m, 22));
       if (pos.ally) add(pos.ally, 34);
       if (S.zoomOn === 'feet') { pts.length = 0; add([AX + 10, AY + 4], 70); add(pos.drone, 30); }
+      if (wd) add([wd.x, wd.y], radiusOf('warden') + 20);
       let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
       pts.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
-      const panelLeft = S.side === 'left';
+      const panelLeft = (side || S.side) === 'left';
       const fr = panelLeft ? { x0: 420, x1: W - 16, y0: 70, y1: H - 16 } : { x0: 16, x1: W - 420, y0: 70, y1: H - 16 };
       const Z = clamp(Math.min((fr.x1 - fr.x0) / (x1 - x0), (fr.y1 - fr.y0) / (y1 - y0)), 1, S.zoomOn === 'feet' ? 2.4 : 2.1);
       return { Z, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, sx: (fr.x0 + fr.x1) / 2, sy: (fr.y0 + fr.y1) / 2 };
@@ -1093,8 +1133,11 @@
         kind: F.st.kind,
         options: F.options,
         reask: F.reask,
-        side: F.S.side === 'left' ? 'dd-left' : 'dd-right',
+        side: F.panelSide === 'left' ? 'dd-left' : 'dd-right',
+        noTimer: F.practice,
+        kindText: F.practice ? (F.st.kind === 'movement' ? 'CHOOSE THE MOVEMENT · PRACTICE (UNTIMED)' : 'CHOOSE THE CONTRACTION · PRACTICE (UNTIMED)') : null,
       });
+      if (!F.practice) this.game.ui.setTimer(1, F.total, 'READ');
       Audio.slow();
     }
 
@@ -1110,10 +1153,25 @@
       return keys;
     }
 
+    practice() { const g = this.game.settings; return !!(g && g.practice); }
+
     updateDecide(dt) {
       const F = this.freeze;
-      F.timer -= dt;
       this.ts = 0.02;
+      F.practice = this.practice();
+      if (F.practice) {
+        // untimed: no countdown, a calm tremble, the panel waits for the answer
+        const p = TopPose.jitter(F.stagePose, 0.5, this.tremKeys(F)); p.mus = F.stagePose.mus; this.pl.pose = p;
+        F.beat -= dt; if (F.beat <= 0) { Audio.heartbeat(); F.beat = 1.2; }
+        return;
+      }
+      if (F.readIn > 0) {
+        F.readIn -= dt;
+        const p = TopPose.jitter(F.stagePose, 0.5, this.tremKeys(F)); p.mus = F.stagePose.mus; this.pl.pose = p;
+        this.game.ui.setTimer(1, F.total, 'READ');
+        return;
+      }
+      F.timer -= dt;
       const k = 1 - F.timer / F.total;
       const p = TopPose.jitter(F.stagePose, 0.5 + 2 * k, this.tremKeys(F));
       p.mus = F.stagePose.mus;
@@ -1144,7 +1202,7 @@
       else result = st.kind === 'contraction' ? 'contraction' : 'inplane';
       F.result = result; F.choice = choice;
       const rt = Math.round((F.total - Math.max(0, F.timer)) * 1000);
-      this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'threat', id: F.id, topic: st.kind === 'movement' ? 'joint_actions' : 'contractions', kind: st.kind, choice: choice || '(timeout)', correct: result === 'correct', answer: st.correct, result, rtMs: rt, reask: F.reask, assist: false, boss: F.boss });
+      this.stats.log.push({ t: Date.now(), wave: this.wave, source: 'threat', id: F.id, topic: st.kind === 'movement' ? 'joint_actions' : 'contractions', kind: st.kind, choice: choice || '(timeout)', correct: result === 'correct', answer: st.correct, result, rtMs: rt, reask: F.reask, assist: !!F.practice, boss: F.boss });
       const ts = this.save.threatStats[F.id] || (this.save.threatStats[F.id] = { seen: 0, firstTryCorrect: 0, streak: 0 });
       if (!F.reask) { this.stats.firstTries++; ts.seen++; }
       if (result === 'correct') {
@@ -1153,28 +1211,47 @@
         ts.streak = (ts.streak || 0) + 1;
         this.reask = this.reask.filter((q) => q !== F.id);
         Audio.good();
-        this.game.ui.toast(Object.assign({}, st, { success: Object.assign({}, st.success, { detail: F.nm(st.success.detail) }) }), C.PLANES.transverse, { side: F.S.side === 'left' ? 'left' : 'right' });
+        this.game.ui.toast(this.namedSt(F), C.PLANES.transverse, { side: F.panelSide === 'left' ? 'left' : 'right' });
         this.startAct(this.actSuccess(F));
         return;
       }
       ts.streak = 0;
       this.ws.wrong++;
+      this.addFaultFor(F);
       if (result === 'timeout') this.stats.timeout++;
       else if (result === 'plane') this.stats.plane++;
       else if (result === 'contraction') this.stats.contraction++;
       else this.stats.inplane++;
       if (result === 'plane') {
-        this.failInfo = Object.assign({ choice, st, kind: 'plane', damage: 'android' }, C.planeFailText(choice, st.limb, 'transverse'));
+        this.failInfo = Object.assign({ choice, st: this.namedSt(F), kind: 'plane', damage: 'android' }, C.planeFailText(choice, st.limb, 'transverse'));
         this.startAct(this.actPlaneFail(F));
         return;
       }
       const txt = result === 'timeout' ? st.timeout : st.fail[choice];
       const asKey = result === 'timeout' ? (txt.as || 'timeout') : (txt.as || choice);
       this.failInfo = {
-        headline: F.nm(txt.headline), explain: F.nm(txt.explain), choice: choice || 'No answer (time ran out)', st, kind: result,
+        headline: F.nm(txt.headline), explain: F.nm(txt.explain), choice: choice || 'No answer (time ran out)', st: this.namedSt(F), kind: result,
         damage: txt.damage, part: txt.part || 'torso', shownAs: choice && txt.as ? txt.as : null, ally: F.ally,
       };
       this.startAct(this.actWrong(F, asKey, result === 'timeout', txt));
+    }
+
+    // a missed freeze adds a Fault Log item: an MCQ tagged with the missed action
+    addFaultFor(F) {
+      const Wk = SEHS.Workshop;
+      if (!Wk || typeof Wk.addFault !== 'function') return null;
+      const logged = {};
+      (this.save.faultLog || []).forEach((f) => { logged[f.id] = 1; });
+      const tagged = (C.MCQ_BANK || []).filter((q) => q.action === F.st.correct);
+      const fresh = tagged.filter((q) => !logged[q.id]);
+      const key = fresh.length ? this.pickR(fresh).id : tagged.length ? this.pickR(tagged).id : (F.st.kind === 'movement' ? 'joint_actions' : 'contractions');
+      try { const f = Wk.addFault(this.save, key, this.rng); this.ws.faults = (this.ws.faults || 0) + 1; return f; } catch (e) { return null; }
+    }
+
+    // threat text with the on-screen ally's name (never name an ally who is not in camp)
+    namedSt(F) {
+      const s0 = F.st.success;
+      return Object.assign({}, F.st, { success: Object.assign({}, s0, { headline: F.nm(s0.headline), detail: F.nm(s0.detail), deeper: s0.deeper ? F.nm(s0.deeper) : s0.deeper }) });
     }
 
     startAct(act) { this.mode = 'act'; this.act = act; this.actT = 0; this.ts = 0.1; }
@@ -1262,8 +1339,11 @@
     actWrong(F, asKey, timeout, txt) {
       const self = this, id = F.id, d = F.drone;
       const st0 = F.stagePose, endPose = TopPose.threat(id, asKey);
+      // muscles that shorten in the chosen (wrong) movement stay lit concentric
+      if (!endPose.mus && F.st.kind === 'movement') endPose.mus = autoMus(st0, endPose);
       const hes = timeout ? 0.9 : 0;
-      const T = F.st.kind === 'contraction' ? (asKey === 'Eccentric' ? (timeout ? 0.4 : 1.2) : asKey === 'timeout' ? 0.5 : 0.5) : 0.32;
+      const T = F.st.kind === 'contraction' ? (asKey === 'Eccentric' ? (timeout ? 0.4 : 1.2) : asKey === 'timeout' ? 0.5 : 0.6) : 0.6;
+      const okPose = TopPose.threat(id, 'success');
       const tc = hes + T + 0.12;
       let hit = false, endT = tc + 1.3, lunge = null;
       if (!timeout) this.floater(F.S.limbPt, mvName(asKey), '#ffb020');
@@ -1275,11 +1355,13 @@
           self.pl.neutral = timeout && t < hes + 0.1 && F.st.kind === 'movement';
           if (t < hes) { p = TopPose.jitter(st0, 1.5 + t * 2.5, self.tremKeys(F)); p.mus = st0.mus; }
           else { p = TopPose.lerp(st0, endPose, easeOut((t - hes) / T)); p.mus = endPose.mus; }
+          // faint ghost of the correct action beside the wrong one
+          if (t > hes) { const g = TopPose.lerp(st0, okPose, easeOut((t - hes) / T)); g.mus = okPose.mus; self.ghostPose = g; self.ghostAlpha = 0.3; self.ghostRig.update(g, dt); }
           // contraction specifics: dragged / shoved / reeled
           if (!timeout && id === 'tetherPull' && asKey === 'Eccentric') self.pl.ox = lerp(0, 40, ease((t - hes) / T));
-          if (!timeout && id === 'heavyCatch' && asKey === 'Isometric') { self.pl.oy = lerp(0, 60, ease((t - hes) / 0.6)); }
+          if (!timeout && id === 'heavyCatch' && asKey === 'Isometric') { self.pl.oy = lerp(0, 40, ease((t - hes) / 0.6)); }
           if (id === 'tetherPull' && (asKey === 'Concentric') && t > hes) { const w = AndroidTop.partPoint(p, AX, AY, 'wristR', 1); d.x = lerp(d.x, w[0] + 30, Math.min(1, dt * 6)); d.y = lerp(d.y, w[1], Math.min(1, dt * 6)); }
-          if (id === 'heavyCatch' && t > hes && t < tc) { const h = AndroidTop.handPos(p, AX, AY, 'R', 1); d.x = h[0] + 26; d.y = h[1] - 36 + self.pl.oy * 0.3; }
+          if (id === 'heavyCatch' && t > hes && t < tc + 0.3) { const h = AndroidTop.handPos(p, AX + self.pl.ox, AY + self.pl.oy, 'R', 1); d.x = h[0] + 26; d.y = h[1] - 36; }
           self.pl.pose = p;
           if (t >= tc && !hit) {
             hit = true;
@@ -1319,6 +1401,19 @@
     }
 
     // ---- wrong plane: malfunction, crack, glitch (§4.4e shared rules) ----
+    // stable muscle list for a plane violation: only the questioned limb,
+    // alternating slowly (static in reduce mode); every other muscle is held at 0
+    planeMus(F, t) {
+      const L = { armL: ['pectoralis_major', 'deltoid_anterior', 'deltoid_posterior', 'infraspinatus', 'subscapularis', 'biceps_brachii', 'triceps_brachii'].map((m) => m + ':L'),
+        armR: ['pectoralis_major', 'deltoid_anterior', 'deltoid_posterior', 'infraspinatus', 'subscapularis', 'biceps_brachii', 'triceps_brachii'].map((m) => m + ':R'),
+        trunk: ['obliques'], forearmR: ['pronator_teres:R', 'supinator:R', 'biceps_brachii:R'], legR: ['gluteus_maximus:R', 'hip_rotators:R', 'gluteus_medius:R'] }[F.st.limb] || [];
+      const mus = {};
+      AndroidTop.MUSCLE_IDS.forEach((m) => { mus[m] = ['c', 0]; });
+      const ph = this.fx.reduce ? 0 : Math.floor(t / 0.45);
+      L.forEach((k, i) => { mus[k] = [(i + ph) % 2 ? 'e' : 'c', 0.75]; });
+      return mus;
+    }
+
     actPlaneFail(F) {
       const self = this, start = TopPose.clone(this.pl.pose);
       const part = { armL: 'armL', armR: 'armR', trunk: 'trunk', forearmR: 'forearmR', legR: 'legR' }[F.st.limb] || 'armR';
@@ -1329,10 +1424,8 @@
       return {
         update(t, dt) {
           const k = ease(t / 0.35);
-          let p = TopPose.jitter(start, 2 + 10 * k * (t < 1.2 ? 1 : Math.max(0, 1 - (t - 1.2) * 2)), self.tremKeys(F));
-          const mus = {};
-          ['pectoralis_major', 'deltoid_anterior', 'deltoid_posterior', 'infraspinatus', 'subscapularis', 'biceps_brachii', 'triceps_brachii', 'obliques', 'gluteus_maximus', 'pronator_teres', 'supinator'].forEach((m) => { mus[m] = [Math.random() < 0.5 ? 'c' : 'e', Math.random()]; });
-          p.mus = mus;
+          let p = TopPose.jitter(start, (self.fx.reduce ? 0.3 : 1) * (2 + 10 * k * (t < 1.2 ? 1 : Math.max(0, 1 - (t - 1.2) * 2))), self.tremKeys(F));
+          p.mus = self.planeMus(F, t);
           self.pl.pose = p;
           self.pl.mal = { part, t: k };
           sT -= dt;
@@ -1405,6 +1498,8 @@
     retry() {
       if (this.mode === 'failed') {
         this.mode = 'replay'; this.modeT = 0;
+        const F = this.freeze;
+        if (F) this.readout = this.makeReadout(F, F.stagePose, TopPose.threat(F.id, 'success'), F.st.correct, 'correct');
         this.ghostRig.reset();
         this.sysFail = 0; this.fx.glitch = 0; this.fx.crack = null;
         this.pl.mal = null; this.pl.status = 'ok';
@@ -1468,7 +1563,7 @@
       if (F.st.kind === 'contraction') {
         const a = TopPose.get(from, key), b = TopPose.get(to, key);
         const c = kind === 'correct' ? F.st.correct : kind === 'timeout' ? null : choice;
-        const lens = { Isometric: 'length unchanged', Concentric: 'muscle shortens', Eccentric: 'muscle lengthens under tension', Isotonic: 'muscle shortens' };
+        const lens = { Isometric: 'length unchanged', Concentric: 'muscle shortens', Eccentric: 'muscle lengthens under tension', Isotonic: 'muscle changes length (shown here as concentric)' };
         const lbl = key === 'R.hz' ? 'arm' : 'forearm';
         return { text: c ? `${lbl} ${Math.round(a)}° → ${Math.round(b)}°: ${lens[c] || ''} → ${String(c).toUpperCase()}` : `${lbl} ${Math.round(a)}° → ${Math.round(b)}°: no controlled contraction: the arm was simply pushed`, kind, t: 0 };
       }
@@ -1479,10 +1574,14 @@
       if (best < 2) return { text: `${this.jointWord(key)} ${Math.round(a)}° → ${Math.round(b)}°: no movement`, kind, t: 0 };
       const raised = /\.rot$/.test(km) && TopPose.get(from, km[0] + '.fl') >= 60;
       let what;
-      if (km.endsWith('.hz')) what = b > a ? `AWAY from the midline → ${mvName('Horizontal abduction')}` : `TOWARD the midline → ${mvName('Horizontal adduction')}`;
+      if (km.endsWith('.hz')) what = b > a ? `raised arm swings LEVEL, away from the midline → ${mvName('Horizontal abduction')}` : `raised arm swings LEVEL, toward the midline → ${mvName('Horizontal adduction')}`;
       else if (raised) what = `the arm rolls about its own long axis → ${b > a ? mvName('Lateral rotation') : mvName('Medial rotation')}`;
       else if (km.endsWith('.rot')) what = b > a ? `forearm swings OUT → ${mvName('Lateral rotation')}` : `forearm swings IN → ${mvName('Medial rotation')}`;
-      else if (km.endsWith('.pr')) what = b > a ? `palm turns FORWARD → ${mvName('Supination')}` : `palm turns BACKWARD → ${mvName('Pronation')}`;
+      else if (km.endsWith('.pr')) {
+        // elbow bent (≥60°): the palm faces up / down; arm straight: forward / back
+        const bent = TopPose.get(from, km[0] + '.el') >= 60;
+        what = b > a ? `palm turns ${bent ? 'UP' : 'FORWARD'} → ${mvName('Supination')}` : `palm turns ${bent ? 'DOWN' : 'BACKWARD'} → ${mvName('Pronation')}`;
+      }
       else if (km === 'trunk') what = `${b > a ? 'turns right' : 'turns left'} → ${mvName('Rotation')}`;
       else what = b > a ? `toes turn OUT → ${mvName('Lateral rotation')}` : `toes turn IN → ${mvName('Medial rotation')}`;
       let tail = '';
@@ -1626,7 +1725,7 @@
       const counts = {};
       cfg.types.forEach((t) => { counts[t] = 0; });
       const q = waveCfg(n);
-      const tmp = { cfg: q, wave: n };
+      const tmp = { cfg: q, wave: n, rng: Math.random };
       const list = this.buildSpawnQueue.call(tmp);
       list.forEach((t) => { counts[t] = (counts[t] || 0) + (t === 'swarm' ? 5 : 1); });
       const sides = cfg.sides; let main = 'N', mv = -1;
@@ -1842,11 +1941,13 @@
       return null;
     }
 
+    // Targeting matters: only fodder (gnats, midges) is swatted automatically.
+    // Every other drone must be chosen by the player (click, A/D, Space).
     autoTarget() {
       if (this.selected && !this.selected.dead && this.planAction(this.selected)) return { d: this.selected, chosen: true };
       let best = null, bd = 1e9;
       for (const d of this.drones) {
-        if (d.dead || d.staged || d.retreat || d.type === 'warden') continue;
+        if (d.dead || d.staged || d.retreat || !AUTO_TYPES[d.type]) continue;
         if (!this.planAction(d)) continue;
         let near = dist(d.x, d.y, AX, AY) * 0.6;
         for (const a of this.allies) if (a.state !== 'taken') near = Math.min(near, dist(d.x, d.y, a.x, a.y));
@@ -1855,6 +1956,22 @@
         if (near < bd) { bd = near; best = d; }
       }
       return best ? { d: best, chosen: false } : null;
+    }
+
+    // how urgent an untargeted drone is (drives the suggestion pulse and Space)
+    dangerOf(d) {
+      if (d.dead || d.staged || d.retreat || AUTO_TYPES[d.type] || d.type === 'warden') return -1;
+      if (d.x < -10 || d.x > W + 10 || d.y < -10 || d.y > H + 10) return -1;
+      const k = { netter: d.st === 'tow' ? 320 : d.st === 'charge' ? 260 : 120, diver: d.st === 'dive' ? 270 : 140, heavy: d.st === 'ram' ? 280 : d.st === 'wind' ? 210 : 110,
+        tether: d.st === 'hooked' ? 230 : d.st === 'aim' ? 190 : 100, lancer: d.st === 'charge' ? 150 + 110 * (1 - d.chargeT / (d.chargeMax || 1)) : 90,
+        crawler: 130, jammer: 160, spotter: 125 }[d.type] || 80;
+      return k - dist(d.x, d.y, AX, AY) * 0.05;
+    }
+
+    updateSuggest() {
+      let best = null, bs = 0;
+      for (const d of this.drones) { const v = this.dangerOf(d); if (v > bs) { bs = v; best = d; } }
+      this.suggest = best;
     }
 
     actionPoses(kind, side, th) {
@@ -2005,7 +2122,8 @@
       this.pl.pose = TopPose.lerp(this.pl.pose, this.restPose(), Math.min(1, wdt * 10));
       if (this.jamT > 0 && !this.focusReq) { this.pending = null; return; }
       if (this.focusReq) {
-        const tgt = this.selected && !this.selected.dead ? this.selected : (this.autoTarget() || {}).d;
+        let tgt = this.selected && !this.selected.dead ? this.selected : this.suggest && !this.suggest.dead ? this.suggest : (this.autoTarget() || {}).d;
+        if (tgt && !AUTO_TYPES[tgt.type] && this.selected !== tgt) { this.selected = tgt; this.hasTargeted = true; }
         const plan = tgt && this.planAction(tgt);
         this.focusReq = false;
         if (plan) { this.startAction(plan, tgt, true); this.pending = null; return; }
@@ -2053,6 +2171,7 @@
       let i = this.selected ? list.indexOf(this.selected) : -1;
       i = i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length;
       this.selected = list[i];
+      this.hasTargeted = true;
       Audio.lockOn && Audio.lockOn();
     }
 
@@ -2066,7 +2185,7 @@
         const dd = dist(d.x, d.y, x, y);
         if (dd < d.r + 22 && dd < bd) { bd = dd; best = d; }
       }
-      if (best) { this.selected = best; Audio.lockOn && Audio.lockOn(); return true; }
+      if (best) { this.selected = best; this.hasTargeted = true; Audio.lockOn && Audio.lockOn(); return true; }
       return false;
     }
 
@@ -2115,7 +2234,7 @@
         this.updateDrones(wdt);
         this.updateAllies(wdt);
         this.updateDiscs(wdt);
-        if (live && m !== 'clear') this.updateCombat(wdt);
+        if (live && m !== 'clear') { this.updateSuggest(); this.updateCombat(wdt); }
         else if (m === 'clear') this.pl.pose = TopPose.lerp(this.pl.pose, this.restPose(), Math.min(1, wdt * 6));
         if (m === 'play') {
           const rate = this.repairRate();
@@ -2226,6 +2345,7 @@
       if (this.readout && (this.mode === 'act' || this.mode === 'replay' || this.mode === 'failed')) this.drawReadout(ctx);
       if (this.mode === 'replay') this.drawReplayTag(ctx);
       this.drawHUD(ctx);
+      this.drawHint(ctx);
       fx.drawScreen(ctx, W, H);
       if (this.hitFlash > 0) { ctx.fillStyle = `rgba(255,40,60,${this.hitFlash * (reduce ? 0.15 : 0.35)})`; ctx.fillRect(0, 0, W, H); }
       if (this.sysFail > 0) this.drawSystemFailure(ctx);
@@ -2429,6 +2549,15 @@
         ctx.restore();
       }
       if (d.type === 'warden') this.drawWardenUnder(ctx, d);
+      if (d === this.suggest && d !== this.selected && !F && this.mode === 'play') {
+        // subtle "this one is dangerous" pulse (a ring + dashes, not colour alone)
+        const p = this.fx.reduce ? 0.6 : 0.5 + 0.5 * Math.sin(t * 5);
+        ctx.save();
+        ctx.strokeStyle = `rgba(255,176,32,${0.35 + 0.35 * p})`; ctx.lineWidth = 2.5; ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 16 + 4 * p, 0, TAU); ctx.stroke();
+        ctx.restore();
+        if (!this.hasTargeted || this.wave <= 1) this.worldText(ctx, 'THREAT: TARGET IT', d.x, d.y - d.r - 26, '#ffb020', 11);
+      }
       // body
       const hpFrac = d.maxHp > 1 && d.type !== 'warden' && d.hp < d.maxHp && !d.staged ? d.hp / d.maxHp : null;
       const sel = this.selected === d && !this.freeze;
@@ -2637,7 +2766,7 @@
       ctx.fillStyle = `rgba(0,0,0,${0.1 * k})`;
       for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
       if (this.mode === 'decide' && this.freeze) {
-        const left = this.freeze.S.side === 'left';
+        const left = this.freeze.panelSide === 'left';
         ctx.save();
         ctx.font = '800 15px ui-monospace, monospace';
         ctx.textAlign = left ? 'right' : 'left';
@@ -2663,7 +2792,7 @@
       const foc = AndroidTop.partPoint(pl.pose, ax, ay, F.S.inset, 1);
       const fx0 = ax * 0.4 + foc[0] * 0.6, fy0 = ay * 0.4 + foc[1] * 0.6;
       const fs = this.worldToScreen(fx0, fy0), ds = this.worldToScreen(F.drone.x, F.drone.y);
-      const left = F.S.side === 'left';
+      const left = F.panelSide === 'left';
       const r = 118, Zi = 3.1;
       const cands = left ? [[560, 470], [1100, 470], [1100, 230], [560, 230], [830, 560]] : [[180, 330], [720, 470], [720, 230], [450, 560]];
       let best = cands[0], bs = -1;
@@ -2798,6 +2927,22 @@
       ctx.font = '700 18px ui-monospace, monospace';
       ctx.fillStyle = '#ffb3b3';
       ctx.fillText('ERR 0x7A1 · PLANE VIOLATION · MOTION OUTSIDE THE TRANSVERSE PLANE', W / 2, H / 2 + 46);
+      ctx.restore();
+    }
+
+    // first-wave targeting hint (stays until the player has targeted something)
+    drawHint(ctx) {
+      if (this.mode !== 'play' || this.hasTargeted || this.wave > 2) return;
+      const txt = 'Click a drone or press A / D, then SPACE to strike';
+      ctx.save();
+      ctx.font = '800 20px ui-monospace, monospace';
+      const tw = ctx.measureText(txt).width + 36;
+      const x = W / 2 - tw / 2, y = 78;
+      const p = this.fx.reduce ? 1 : 0.75 + 0.25 * Math.sin(this.time * 4);
+      ctx.fillStyle = 'rgba(6,12,18,0.9)'; ctx.strokeStyle = `rgba(255,176,32,${p})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, tw, 40, 8) : ctx.rect(x, y, tw, 40); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffd27a'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+      ctx.fillText(txt, W / 2, y + 21);
       ctx.restore();
     }
 

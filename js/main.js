@@ -71,9 +71,9 @@
       $('decision').classList.remove('urgent');
     },
     hideDecision() { this.hide('decision'); },
-    setTimer(frac, secs) {
+    setTimer(frac, secs, label) {
       $('d-timer-fill').style.width = frac * 100 + '%';
-      $('d-secs').textContent = secs.toFixed(1) + 's';
+      $('d-secs').textContent = label ? `${label} · ${secs.toFixed(0)}s` : secs.toFixed(1) + 's';
       $('decision').classList.toggle('urgent', frac < 0.35);
     },
 
