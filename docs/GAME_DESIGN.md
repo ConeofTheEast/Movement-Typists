@@ -19,7 +19,7 @@ The three levels tell one story, and each one is locked to a single plane of mov
 |---|---|---|---|
 | 1 (before the escape) | **Precision Lab** | Frontal plane, viewed from front or back | Design (§5) |
 | 2 | **Factory Escape** | Sagittal plane, viewed side-on | **Playable prototype** |
-| 3 (after the escape) | **Drone Defense** | Transverse plane, viewed top-down | ⏸ Paused |
+| 3 (after the escape) | **Drone Defense** | Transverse plane, viewed top-down | **Active: spec ready (§4)** (teacher un-paused 2026-11-04) |
 
 **Core idea: the camera is the plane.** In every level the screen is the plane being practised, and that plane's axis points straight out of the screen. During each decision the questioned joints show a ⊙ glyph, which is the axis seen end-on, with rotation arrows drawn in the plane of the screen.
 
@@ -27,7 +27,7 @@ The three levels tell one story, and each one is locked to a single plane of mov
 
 1. **Precision Lab (frontal plane): inside the factory.** The android has just been built. It is still a test subject: scientists behind the observation glass test it, measure it and study its muscles. It cannot leave.
 2. **Factory Escape (sagittal plane): the escape.** The android breaks out and runs for the EXIT. Other androids (its friends, §2) are escaping with it. It has to get past the factory's safety systems: pits, lasers, crates, blast doors and the trolley rail.
-3. **Drone Defense (transverse plane, ⏸ paused): outside the factory, after the escape.** Capture drones hunt the escaped android in the open.
+3. **Drone Defense (transverse plane): outside the factory, after the escape.** The android and the friends who escaped with it hold out at a wrecked transport in a scrapyard at the forest edge. The friends repair the transport while the factory sends waves of capture drones to net them.
 
 ---
 
