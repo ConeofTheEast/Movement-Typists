@@ -905,3 +905,31 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
 }
 .pg-next-l { margin: 0; padding-left: 1.2em; display: grid; gap: 0.25em; font-size: 0.88em; line-height: 1.4; }
 .pg-next-l li::marker { color: var(--amber); }
+/* tutorial: denser movement cards + a scroll cue when a page is taller than the box */
+.mv-grid { grid-template-columns: repeat(auto-fill, minmax(11.2em, 1fr)); gap: 0.4em; }
+.mv-card { padding: 0.45em 0.6em; font-size: 0.9em; }
+.mv-card i { font-size: 0.85em; }
+.others { font-size: 0.85em; line-height: 1.35; }
+.tut-body { position: relative; }
+.tut-body.more::after { content: '▼ scroll for more'; position: absolute; left: 0; bottom: 0; width: calc(100% - 27em); padding: 1.6em 0 0.2em; text-align: center; font: 700 0.75em ui-monospace, monospace; letter-spacing: 0.1em; color: var(--cyan); background: linear-gradient(transparent, var(--panel) 60%); pointer-events: none; }
+/* tutorial on a phone: the stage letterboxes to ~390 px, so the tutorial
+   breaks out to the full viewport at a readable size, one column */
+@media (max-width: 700px), (max-height: 430px) {
+  #tutorial { position: fixed; inset: 0; z-index: 60; font-size: 14px; align-items: stretch; }
+  #tutorial .tut { width: 100%; height: 100%; border-radius: 0; padding: 0.6em 0.7em; }
+  #tutorial .tut-body { grid-template-columns: 1fr; overflow: auto; }
+  #tutorial #tut-content { overflow: visible; }
+  #tutorial .tut-demo { order: -1; }
+  #tutorial .tut-demo { flex: none; min-height: auto; }
+  #tutorial #tut-canvas { height: 30vh; width: auto; max-width: 100%; align-self: center; flex: none; }
+  #tutorial .tut-body { grid-auto-rows: auto; align-content: start; }
+  #tutorial .mv-grid { grid-template-columns: repeat(auto-fill, minmax(9.5em, 1fr)); }
+  #tutorial .tut footer { flex-wrap: wrap; }
+  #tutorial .tut-body.more::after { display: none; }
+  #tutorial .pcards, #tutorial .branches, #tutorial .others { grid-template-columns: 1fr; }
+}
+@media (max-height: 430px) {
+  #tutorial .tut-body { grid-template-columns: 1fr 40%; }
+  #tutorial .tut-demo { order: 0; }
+  #tutorial #tut-content { overflow: auto; }
+}

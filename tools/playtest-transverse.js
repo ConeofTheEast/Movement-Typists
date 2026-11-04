@@ -81,7 +81,7 @@ const SHOTS = +val('shots', 3);
   const visible = (id) => pg.evaluate((id) => !document.getElementById(id).classList.contains('hidden'), id);
   const shot = (name) => pg.screenshot({ path: `${OUT}/${name}.png` });
   const log = (...a) => console.log(...a);
-  const heal = () => pg.evaluate(() => { const L = game.level; L.energy = L.maxEnergy; L.damage = {}; L.allies.forEach((a) => { if (a.state === 'netted') { L.freeAlly(a, true); } }); });
+  const heal = () => pg.evaluate(() => { const L = game.level; L.energy = L.maxEnergy; L.damage = {}; if (L.mode === 'play') L.repair = 0; /* SURGE repair must not end the test wave */ L.allies.forEach((a) => { if (a.state === 'netted') { L.freeAlly(a, true); } }); });
 
   // play past the intro
   await pg.evaluate(() => game.level.debug.skip(3));

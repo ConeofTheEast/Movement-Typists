@@ -418,6 +418,15 @@
       if (this.opts.onClose) this.opts.onClose();
     }
 
+    // a "more below" cue whenever a page is taller than its box (every page
+    // stays readable at 1280x720 and on a phone-sized letterboxed stage)
+    scrollCue() {
+      const c = $('tut-content');
+      if (!c) return;
+      if (!this._cueBound) { this._cueBound = true; c.addEventListener('scroll', () => this.scrollCue()); window.addEventListener('resize', () => this.scrollCue()); }
+      requestAnimationFrame(() => c.parentNode.classList.toggle('more', c.scrollHeight - c.scrollTop - c.clientHeight > 4));
+    }
+
     finish(skipped) {
       const playable = this.lv.status === 'playable';
       this.el.classList.add('hidden');
@@ -439,6 +448,7 @@
       this.focusMuscle = null;
       $('tut-content').innerHTML = this['page_' + pg.id]();
       $('tut-content').scrollTop = 0;
+      this.scrollCue();
       const first = $('tut-content').querySelector('[data-demo]');
       if (pg.id === 'contractions') this.setDemo('side', 'isotonic');
       else if (pg.id === 'moves' && first) { this.setDemo(first.dataset.view || this.view, first.dataset.demo); this.markActive(first); }
