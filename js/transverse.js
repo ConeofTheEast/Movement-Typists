@@ -306,7 +306,7 @@
       try { return P[fn].apply(P, args || []); } catch (e) { console.warn('Progress.' + fn, e); return null; }
     }
     perk(a, k, def) { const p = a && a.lvl && a.lvl.perk; return p && typeof p[k] === 'number' ? p[k] : def; }
-    trailCol() { const c = this.cosmetic && this.cosmetic.trail; return c ? { col: '#ffffff', glow: c } : {}; }
+    trailCol() { const c = this.cosmetic && (this.cosmetic.trailColor || (/^#/.test(this.cosmetic.trail || '') ? this.cosmetic.trail : null)); return c ? { col: '#ffffff', glow: c } : {}; }
 
     // ---------------- wave lifecycle ----------------
     startWave(n) {
@@ -876,6 +876,7 @@
       if (d.ally && d.ally.state === 'netted' && d.ally.netter === d) { d.ally.netter = null; this.freeAlly(d.ally, true); }
       if (this.hooked === d) this.hooked = null;
       this.stats.kills++; this.ws.kills++;
+      if (d.type === 'netter') this.ws.netterKills = (this.ws.netterKills || 0) + 1;
       if (!o.noCombo) this.addCombo(1, d.x, d.y);
     }
 
@@ -1240,7 +1241,10 @@
       else this.ws.ftStreak = 0;
       const P = SEHS.Progress;
       if (P && typeof P.onFreeze === 'function') {
-        try { P.onFreeze({ threatId: F.id, action: st.correct, kind: st.kind, choice: choice || null, correct: result === 'correct', result, firstTry: !F.reask, timeMs: rt, allyName: F.ally ? F.ally.name : null, wave: this.wave, assist: !!F.practice }); } catch (e) { /* ignore */ }
+        try {
+          const pr = P.onFreeze({ threatId: F.id, action: st.correct, kind: st.kind, choice: choice || null, correct: result === 'correct', result, firstTry: !F.reask, timeMs: rt, allyName: F.ally ? F.ally.name : null, wave: this.wave, assist: !!F.practice });
+          if (pr && Array.isArray(pr.toasts)) this.pendingToasts = (this.pendingToasts || []).concat(pr.toasts);
+        } catch (e) { /* ignore */ }
       }
       const ts = this.save.threatStats[F.id] || (this.save.threatStats[F.id] = { seen: 0, firstTryCorrect: 0, streak: 0 });
       if (!F.reask) { this.stats.firstTries++; ts.seen++; }
@@ -1259,7 +1263,7 @@
       this.ws.wrong++;
       this.addFaultFor(F);
       if (result === 'timeout') this.stats.timeout++;
-      else if (result === 'plane') this.stats.plane++;
+      else if (result === 'plane') { this.stats.plane++; this.ws.planeErrors = (this.ws.planeErrors || 0) + 1; }
       else if (result === 'contraction') this.stats.contraction++;
       else this.stats.inplane++;
       if (result === 'plane') {
@@ -1593,6 +1597,8 @@
       this.failInfo = null;
       this.mode = 'resume';
       this.modeT = 0;
+      (this.pendingToasts || []).slice(0, 3).forEach((txt, i) => setTimeout(() => { if (this.game.level === this) this.fx.popText(AX, 150 + i * 34, String(txt), '#ffd27a', 24); }, 600 + i * 700));
+      this.pendingToasts = [];
     }
 
     addScrap(n, x, y, opts) {
@@ -1718,7 +1724,7 @@
 
     // wave contracts (js/progress.js): pay their scrap through the workshop
     waveEnd(cleared) {
-      const r = this.progressCall('onWaveEnd', [{ wave: this.wave, cleared, alliesNetted: this.ws.netted, energyLost: this.ws.energyLost, freezes: this.ws.freezes, firstTryStreakMax: this.ws.ftStreakMax || 0, assist: this.practice() }]);
+      const r = this.progressCall('onWaveEnd', [{ wave: this.wave, cleared, alliesNetted: this.ws.netted, energyLost: this.ws.energyLost, freezes: this.ws.freezes, firstTryStreakMax: this.ws.ftStreakMax || 0, assist: this.practice(), boss: !!this.cfg.boss, alliesTaken: this.allies.filter((a) => a.state === 'taken').length, netterKills: this.ws.netterKills || 0, planeErrors: this.ws.planeErrors || 0 }]);
       const done = (r && Array.isArray(r.completed)) ? r.completed : [];
       done.forEach((c) => {
         const n = Math.round(c.scrap || 0);
@@ -2511,7 +2517,7 @@
         highlight: showHl ? { joints: F.S.joints, arcs: true } : null,
         labels: opts.labels ? 'active' : null,
         malfunction: pl.mal, launcher, lockHand: tO.lockHand || null, feetBold: tO.feetBold || null,
-        visor: this.cosmetic && this.cosmetic.visor ? this.cosmetic.visor : undefined,
+        visor: this.cosmetic && (this.cosmetic.visorColor || (/^#/.test(this.cosmetic.visor || '') ? this.cosmetic.visor : null)) || undefined,
       };
       this.lastRig = this.rig.draw(ctx, pl.pose, x, y, o);
       // damage smoke
@@ -2657,7 +2663,7 @@
         ctx.strokeStyle = `rgba(255,176,32,${0.35 + 0.35 * p})`; ctx.lineWidth = 2.5; ctx.setLineDash([8, 6]);
         ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 16 + 4 * p, 0, TAU); ctx.stroke();
         ctx.restore();
-        if (!this.hasTargeted || this.wave <= 1) this.worldText(ctx, 'THREAT: TARGET IT', d.x, d.y - d.r - 26, '#ffb020', 11);
+        if (!this.hasTargeted || this.wave <= 1) this.worldText(ctx, 'THREAT: TARGET IT', clamp(d.x, 80, W - 80), Math.max(90, d.y - d.r - 26), '#ffb020', 13);
       }
       // body
       const hpFrac = d.maxHp > 1 && d.type !== 'warden' && d.hp < d.maxHp && !d.staged ? d.hp / d.maxHp : null;
@@ -2853,7 +2859,7 @@
       let t = 2000;
       if (Math.abs(sxn) > 1e-3) t = Math.min(t, ((sxn > 0 ? W - 46 : 46) - ox) / sxn);
       if (Math.abs(syn) > 1e-3) t = Math.min(t, ((syn > 0 ? H - 46 : 76) - oy) / syn);
-      const x = ox + sxn * t, y = oy + syn * t;
+      const [x, y] = clearOfHud(ox + sxn * t, oy + syn * t); // never on top of the monitor / roster
       Arena.drawSpawnWarning(ctx, x, y, Math.atan2(-syn, -sxn), this.time, { label: DT[ns.type].name, count: ns.type === 'swarm' ? 5 : 1 });
     }
 
