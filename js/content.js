@@ -1334,7 +1334,7 @@
       options: ['Sagittal plane, frontal axis', 'Frontal plane, sagittal axis', 'Transverse plane, longitudinal axis', 'Frontal plane, longitudinal axis'],
       answer: 1,
       explain: 'Abduction and adduction of the arms and legs happen in the frontal plane about the sagittal (anteroposterior) axis.',
-      whyWrong: ['Sagittal-plane movements are forward and backward, such as flexion.', null, 'Transverse-plane movements are rotations, not sideways lifts.', 'The frontal plane rotates about the sagittal axis, not the longitudinal axis.'],
+      whyWrong: ['Sagittal-plane movements are forward and backward, such as flexion.', null, 'Transverse-plane movements turn or swing level about a vertical line (e.g. rotation, horizontal abduction), not sideways lifts.', 'Frontal-plane movements happen about the sagittal axis, not the longitudinal axis.'],
     },
     {
       id: 'pa11', topic: 'planes_axes', difficulty: 3,
