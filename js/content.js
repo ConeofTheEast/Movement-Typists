@@ -181,7 +181,7 @@
   const LEVEL_MUSCLES = {
     sagittal: ['gluteus_maximus', 'iliopsoas', 'quadriceps', 'hamstrings', 'gastrocnemius', 'soleus', 'tibialis_anterior', 'deltoid_anterior', 'deltoid_posterior', 'pectoralis_major', 'latissimus_dorsi', 'biceps_brachii', 'brachialis', 'brachioradialis', 'triceps_brachii'],
     frontal: ['deltoid_middle', 'supraspinatus', 'latissimus_dorsi', 'pectoralis_major', 'gluteus_medius', 'hip_adductors', 'obliques', 'tibialis_anterior', 'fibularis_longus', 'pronator_teres', 'supinator', 'biceps_brachii'],
-    transverse: ['pectoralis_major', 'deltoid_anterior', 'latissimus_dorsi', 'deltoid_posterior', 'subscapularis', 'infraspinatus', 'obliques', 'pronator_teres', 'supinator', 'biceps_brachii', 'gluteus_medius', 'tensor_fasciae_latae'],
+    transverse: ['pectoralis_major', 'deltoid_anterior', 'latissimus_dorsi', 'deltoid_posterior', 'subscapularis', 'infraspinatus', 'obliques', 'pronator_teres', 'supinator', 'biceps_brachii', 'gluteus_maximus', 'gluteus_medius', 'tensor_fasciae_latae'],
   };
 
 
@@ -445,10 +445,31 @@
     return MOVEMENT_PLANE[movement] || null;
   }
 
-  function planeFailText(choice, limb) {
+  // Readable names for the Drone Defense `limb` codes.
+  const LIMB_LABELS = { armL: 'left arm', armR: 'right arm', trunk: 'trunk', forearmR: 'right forearm', legR: 'right leg' };
+  // Extra sentence for known plane-error confusions (GAME_DESIGN §4.4f #1).
+  const PLANE_FAIL_NOTES = {
+    'legR:Abduction': 'Abduction slides the whole leg out sideways about a different axis. It does not turn the toes.',
+    'legR:Adduction': 'Adduction slides the whole leg in sideways about a different axis. It does not turn the toes.',
+    'legR:Inversion': 'Inversion tilts the sole of the foot at the ankle. It does not turn the toes at the hip.',
+  };
+
+  function planeFailText(choice, limb, levelPlane) {
+    const lp = levelPlane || 'sagittal';
     const pid = planeOf(choice);
     const pl = PLANES[pid];
     const def = MOVEMENT_DEFS[choice] ? ` (it ${MOVEMENT_DEFS[choice]})` : '';
+    if (lp !== 'sagittal') {
+      const where = LIMB_LABELS[limb] || limb;
+      const lvl = PLANES[lp];
+      const note = PLANE_FAIL_NOTES[`${limb}:${choice}`] ? ` ${PLANE_FAIL_NOTES[`${limb}:${choice}`]}` : '';
+      const allowed = lp === 'transverse' ? 'can only turn or swing level' : 'can only move side to side';
+      const lock = lp === 'transverse' ? "The camp's guard post" : 'The precision wall';
+      return {
+        headline: 'SYSTEM FAILURE: PLANE VIOLATION',
+        explain: `${choice}${def} is a ${pl.name.toUpperCase()} movement, about the ${axisName(pid)}.${note} ${lock} locks the android to the ${lvl.name.toUpperCase()}, where the ${where} ${allowed} about the ${axisName(lp)}. Forcing a ${pl.name.toLowerCase()} movement here overloaded the servos.`,
+      };
+    }
     return {
       headline: 'SYSTEM FAILURE: PLANE VIOLATION',
       explain: `${choice}${def} is a ${pl.name.toUpperCase()} movement, about the ${axisName(pid)}. The escape corridor locks the android to the SAGITTAL plane, where the ${limb} can only flex or extend about the ${axisName('sagittal')}. Forcing a ${pl.name.toLowerCase()} movement here overloaded the servos.`,
@@ -457,504 +478,646 @@
 
   // ---------------------------------------------------------------
   // TRANSVERSE LEVEL (Drone Defense): threat-freeze question bank
-  //   kind: 'movement'    -> options = correct + distractors (other
-  //                          TRANSVERSE actions) + planeWrong (sagittal /
-  //                          frontal actions -> malfunction, crack, glitch)
-  //   kind: 'contraction' -> options = concentric / eccentric / isometric,
-  //                          unless the threat lists its own `options`.
-  // Every option has its own fail entry. `damage` says who pays:
-  //   'ally'    -> the drone nets an ally (rescue follow-up)
-  //   'android' -> the android takes a hit (-1 energy cell)
-  // `planeError: true` marks a non-transverse choice (glitch effects).
-  // `as` on a contraction fail/timeout = the contraction the rig animates.
-  // Static strings never name an axis (axis names rotate: use
-  // axisName('transverse') in the engine if a label is needed).
+  // Spec: docs/GAME_DESIGN.md §4.4c–§4.4f. Staged positions/poses live in
+  // the engine (THREAT_STAGE); only wording lives here.
+  //   kind: 'movement'    -> options per tier (§4.4b) from correct +
+  //                          `distractors` (ordered, mirror first; the
+  //                          designer's physics-honest list: DO NOT add) +
+  //                          `planeWrong` (sagittal/frontal pool).
+  //   kind: 'contraction' -> `options` (correct + `distractors`).
+  // Every distractor / wrong contraction has a `fail` entry with
+  //   damage: 'ally' | 'android', part: 'head'|'armR'|'armL'|'torso'|'legR'.
+  // planeWrong choices use planeFailText(choice, limb, 'transverse').
+  // `as` = the contraction the rig animates (Isotonic, timeouts).
+  // Static strings never name an axis (names rotate: use axisName()).
   // ---------------------------------------------------------------
+  const ARM_PLANE_WRONG = ['Flexion', 'Extension', 'Abduction', 'Adduction'];
+  const TRUNK_PLANE_WRONG = ['Flexion', 'Extension', 'Lateral flexion'];
+  const PALM_PLANE_WRONG = ['Flexion', 'Extension', 'Radial deviation', 'Ulnar deviation'];
+  const HIP_PLANE_WRONG = ['Abduction', 'Adduction', 'Flexion', 'Inversion'];
+
   const DRONE_THREATS = {
-    crossSwat: {
-      title: 'CROSS-BODY SWAT',
+    netterOnAlly_left: {
+      title: 'NETTER ON KITE',
       tier: 1,
       kind: 'movement',
-      limb: 'arms',
+      limb: 'armL',
       joints: ['shoulder'],
-      prompt: 'A drone dives at the ally on your FAR side. Your arm is straight out to the side at shoulder height. Sweep it across your chest to swat. Which shoulder action?',
+      prompt: 'The netter is diving at KITE on your LEFT. Your left arm is raised straight in front. What movement at the left shoulder swings it into the drone?',
+      correct: 'Horizontal abduction',
+      distractors: ['Horizontal adduction', 'Medial rotation', 'Lateral rotation'],
+      planeWrong: ARM_PLANE_WRONG,
+      success: {
+        headline: 'HORIZONTAL ABDUCTION',
+        detail: 'The raised left arm swung out and back, AWAY from the midline, and clipped the netter. KITE is safe.',
+        deeper: 'Going deeper: the posterior deltoid is the prime mover, helped by the infraspinatus. Both shorten (concentric).',
+        agonists: ['deltoid_posterior', 'infraspinatus'],
+        contraction: 'concentric',
+      },
+      fail: {
+        'Horizontal adduction': {
+          headline: 'SWEPT THE WRONG SIDE',
+          explain: 'Horizontal adduction swings a raised arm TOWARD and across the midline. Your left arm swept right, away from the netter, and KITE was netted. The swat needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          damage: 'ally',
+        },
+        'Medial rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Medial rotation rolls the raised arm inward about its own long axis. The arm kept pointing forward, so the net fired and KITE was netted. The swat needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          damage: 'ally',
+        },
+        'Lateral rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Lateral rotation rolls the raised arm outward about its own long axis. The arm kept pointing forward, so the net fired and KITE was netted. The swat needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          damage: 'ally',
+        },
+      },
+      timeout: {
+        headline: 'HESITATION',
+        explain: 'Your left arm trembled but stayed forward, and the net fired over KITE. Swinging a raised arm away from the midline is HORIZONTAL ABDUCTION (posterior deltoid, concentric).',
+        damage: 'ally',
+      },
+    },
+
+    netterOnAlly_right: {
+      title: 'NETTER ON BOLT',
+      tier: 1,
+      kind: 'movement',
+      limb: 'armL',
+      joints: ['shoulder'],
+      prompt: 'The netter is going for BOLT on your RIGHT. Your right hand is busy. Your LEFT arm is out to the side. What movement at the left shoulder sweeps it across into the drone?',
       correct: 'Horizontal adduction',
-      distractors: ['Horizontal abduction', 'Medial rotation'],
-      planeWrong: ['Adduction', 'Flexion'],
+      distractors: ['Horizontal abduction', 'Rotation', 'Medial rotation', 'Lateral rotation'],
+      planeWrong: ARM_PLANE_WRONG,
       success: {
         headline: 'HORIZONTAL ADDUCTION',
-        detail: 'The straight arm swept forward and across the chest at shoulder height, toward the midline. The swat smashed the drone.',
-        deeper: 'Going deeper: the pectoralis major is the prime mover, helped by the anterior deltoid. Both shorten under tension (concentric).',
+        detail: 'The raised left arm swept TOWARD and across the midline and smashed the netter. BOLT is safe.',
+        deeper: 'Going deeper: the pectoralis major is the prime mover, helped by the anterior deltoid (both concentric). Same arm as the KITE threat, opposite movement: the midline decides.',
+        agonists: ['pectoralis_major', 'deltoid_anterior'],
+        contraction: 'concentric',
+      },
+      fail: {
+        'Horizontal abduction': {
+          headline: 'SWUNG AWAY FROM IT',
+          explain: 'Horizontal abduction swings a raised arm AWAY from the midline. Your left arm swung further back, away from the drone, and BOLT was netted. The sweep needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'ally',
+        },
+        Rotation: {
+          headline: 'TWISTED, FELL SHORT',
+          explain: 'Rotation turns the trunk (spine). You twisted right as far as your spine allows, but the left hand stopped short and BOLT was netted. The arm needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'ally',
+        },
+        'Medial rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Medial rotation rolls the raised arm inward about its own long axis. It stayed out to the side, so BOLT was netted. The sweep needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'ally',
+        },
+        'Lateral rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Lateral rotation rolls the raised arm outward about its own long axis. It stayed out to the side, so BOLT was netted. The sweep needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'ally',
+        },
+      },
+      timeout: {
+        headline: 'HESITATION',
+        explain: 'Your left arm stayed out to the side and the net fired over BOLT. Sweeping a raised arm across the midline is HORIZONTAL ADDUCTION (pectoralis major, concentric).',
+        damage: 'ally',
+      },
+    },
+
+    crossSwat: {
+      title: 'CROSS SWAT',
+      tier: 1,
+      kind: 'movement',
+      limb: 'armR',
+      joints: ['shoulder'],
+      prompt: 'A diver is coming at you from the front-left. Your right arm is out to the side. What movement at the right shoulder swings it across your body into the drone?',
+      correct: 'Horizontal adduction',
+      distractors: ['Horizontal abduction', 'Rotation', 'Medial rotation', 'Lateral rotation'],
+      planeWrong: ARM_PLANE_WRONG,
+      success: {
+        headline: 'HORIZONTAL ADDUCTION',
+        detail: 'The raised right arm swept TOWARD and across the midline and batted the diver into the dirt.',
+        deeper: 'Going deeper: the pectoralis major is the prime mover, helped by the anterior deltoid. Both shorten (concentric).',
         agonists: ['pectoralis_major', 'deltoid_anterior'],
         contraction: 'concentric',
       },
       fail: {
         'Horizontal abduction': {
           headline: 'SWUNG THE WRONG WAY',
-          explain: 'Horizontal abduction swings a raised arm BACKWARD, away from the midline. Your arm opened out behind you while the drone netted your ally. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric) to sweep the arm across the chest.',
-          damage: 'ally',
+          explain: 'Horizontal abduction swings a raised arm AWAY from the midline. Your arm swung further back and the diver slammed into your chest. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'android',
+          part: 'torso',
+        },
+        Rotation: {
+          headline: 'TWISTED, FELL SHORT',
+          explain: 'Rotation turns the trunk (spine). You twisted left as far as your spine allows, but the hand stopped short and the diver hit your chest. The arm needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+          damage: 'android',
+          part: 'torso',
         },
         'Medial rotation': {
-          headline: 'ARM TWISTED, NEVER SWUNG',
-          explain: 'Medial rotation turns the upper arm inward around its own long axis. The arm twisted in place but stayed out to the side, so it never crossed your body. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
-          damage: 'ally',
-        },
-        Adduction: {
-          headline: 'PLANE VIOLATION: ARM DROPPED',
-          explain: 'Adduction is a FRONTAL-plane movement: it lowers the arm down to your side. The servos fought the level swing and glitched. The swat needed HORIZONTAL ADDUCTION, a transverse-plane sweep driven by the pectoralis major (concentric).',
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Medial rotation rolls the raised arm inward about its own long axis. It stayed out to the side and the diver hit your chest. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
           damage: 'android',
-          planeError: true,
+          part: 'torso',
         },
-        Flexion: {
-          headline: 'PLANE VIOLATION: ARM JAMMED UP',
-          explain: 'Flexion is a SAGITTAL-plane movement: it swings the arm forward and up. The arm jerked upward instead of sweeping level, and the servos glitched. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
+        'Lateral rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Lateral rotation rolls the raised arm outward about its own long axis. It stayed out to the side and the diver hit your chest. The swat needed HORIZONTAL ADDUCTION: the pectoralis major shortens (concentric).',
           damage: 'android',
-          planeError: true,
+          part: 'torso',
         },
       },
       timeout: {
-        headline: 'FROZEN MID-SWING',
-        explain: 'The arm stayed out to the side and the drone netted your ally. Sweeping a raised arm across the chest is HORIZONTAL ADDUCTION (pectoralis major, concentric).',
-        damage: 'ally',
+        headline: 'HESITATION',
+        explain: 'Your right arm stayed out to the side and the diver hit your chest. Sweeping a raised arm across the midline is HORIZONTAL ADDUCTION (pectoralis major, concentric).',
+        damage: 'android',
+        part: 'torso',
       },
     },
 
     backhandSwat: {
-      title: 'BACKHAND SWAT',
+      title: 'BACKHAND',
       tier: 1,
       kind: 'movement',
-      limb: 'arms',
+      limb: 'armR',
       joints: ['shoulder'],
-      prompt: 'A drone darts in on the OUTSIDE of your arm. The arm is straight out in front at shoulder height. Swing it out and back like a backhand. Which shoulder action?',
+      prompt: 'A diver is coming at your RIGHT side. Your right arm is guarding across your chest. What movement at the right shoulder swings it round into the drone?',
       correct: 'Horizontal abduction',
-      distractors: ['Horizontal adduction', 'Lateral rotation'],
-      planeWrong: ['Abduction', 'Extension'],
+      distractors: ['Horizontal adduction', 'Rotation', 'Medial rotation', 'Lateral rotation'],
+      planeWrong: ARM_PLANE_WRONG,
       success: {
         headline: 'HORIZONTAL ABDUCTION',
-        detail: 'The straight arm swung backward at shoulder height, away from the midline. The backhand smashed the drone.',
+        detail: 'The raised right arm swung out and back, AWAY from the midline. The backhand smashed the diver.',
         deeper: 'Going deeper: the posterior deltoid is the prime mover, helped by the infraspinatus. Both shorten (concentric). The pectoralis major is the antagonist.',
         agonists: ['deltoid_posterior', 'infraspinatus'],
         contraction: 'concentric',
       },
       fail: {
         'Horizontal adduction': {
-          headline: 'SWATTED THIN AIR',
-          explain: 'Horizontal adduction sweeps a raised arm forward and ACROSS the chest. Your arm swung inward, away from the drone, and it slammed into your side. The backhand needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          headline: 'PRESSED THE WRONG WAY',
+          explain: 'Horizontal adduction swings a raised arm TOWARD and across the midline. Your arm pressed further across your chest and the diver clipped your right shoulder. The backhand needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
           damage: 'android',
+          part: 'armR',
+        },
+        Rotation: {
+          headline: 'TWISTED, FELL SHORT',
+          explain: 'Rotation turns the trunk (spine). You twisted right as far as your spine allows, but the hand stopped short and the diver hit your arm. The arm needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          damage: 'android',
+          part: 'armR',
+        },
+        'Medial rotation': {
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Medial rotation rolls the raised arm inward about its own long axis. It stayed across your chest and the diver hit your arm. The backhand needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          damage: 'android',
+          part: 'armR',
         },
         'Lateral rotation': {
-          headline: 'ARM TWISTED, NEVER SWUNG',
-          explain: 'Lateral rotation turns the upper arm outward around its own long axis. The arm twisted in place but kept pointing forward, so it never reached the drone. The backhand needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
+          headline: 'ARM ROLLED, NEVER SWUNG',
+          explain: 'Lateral rotation rolls the raised arm outward about its own long axis. It stayed across your chest and the diver hit your arm. The backhand needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
           damage: 'android',
-        },
-        Abduction: {
-          headline: 'PLANE VIOLATION: SIDEWAYS LIFT',
-          explain: 'Abduction is a FRONTAL-plane movement: it raises the arm sideways from your side. The servos fought the level backhand and glitched. The swat needed HORIZONTAL ABDUCTION, driven by the posterior deltoid (concentric).',
-          damage: 'android',
-          planeError: true,
-        },
-        Extension: {
-          headline: 'PLANE VIOLATION: ARM DROPPED BACK',
-          explain: 'Extension is a SAGITTAL-plane movement: it swings the arm down and back past your hip. The arm dived low under the drone and the servos glitched. The swat needed HORIZONTAL ABDUCTION: the posterior deltoid shortens (concentric).',
-          damage: 'android',
-          planeError: true,
+          part: 'armR',
         },
       },
       timeout: {
-        headline: 'FROZEN MID-SWING',
-        explain: 'The arm stayed pointing forward and the drone rammed you. Swinging a raised arm out and back is HORIZONTAL ABDUCTION (posterior deltoid, concentric).',
+        headline: 'HESITATION',
+        explain: 'Your arm stayed across your chest and the diver hit your right arm. Swinging a raised arm away from the midline is HORIZONTAL ABDUCTION (posterior deltoid, concentric).',
         damage: 'android',
+        part: 'armR',
+      },
+    },
+
+    diveBehind: {
+      title: 'REAR DIVE',
+      tier: 1,
+      kind: 'movement',
+      limb: 'trunk',
+      joints: ['trunk'],
+      prompt: 'A diver is coming from BEHIND you. Your feet are planted and your arms alone cannot reach. What movement of the TRUNK (spine) brings you round to face it?',
+      correct: 'Rotation',
+      distractors: ['Horizontal abduction', 'Lateral rotation', 'Medial rotation'],
+      planeWrong: TRUNK_PLANE_WRONG,
+      success: {
+        headline: 'ROTATION',
+        detail: 'Your spine turned your shoulders round over the planted hips, and your swinging arm met the diver behind you.',
+        deeper: 'Going deeper: the arm also horizontally abducted, but alone it hit its limit. Trunk rotation by the obliques (concentric) closed the gap. Turning right uses the LEFT external and RIGHT internal obliques.',
+        agonists: ['obliques', 'deltoid_posterior'],
+        contraction: 'concentric',
+      },
+      fail: {
+        'Horizontal abduction': {
+          headline: 'ARM HIT ITS LIMIT',
+          explain: 'Horizontal abduction swings a raised arm out and back. Your right arm stopped at its limit, still short, and the diver struck your back. The turn needed trunk ROTATION: the obliques shorten (concentric).',
+          damage: 'android',
+          part: 'torso',
+        },
+        'Lateral rotation': {
+          headline: 'ARMS ROLLED, CHEST STILL',
+          explain: 'Lateral rotation rolls a limb outward about its own long axis. Your arms rolled in place, your chest kept facing forward, and the diver struck your back. The turn needed trunk ROTATION: the obliques shorten (concentric).',
+          damage: 'android',
+          part: 'torso',
+        },
+        'Medial rotation': {
+          headline: 'ARMS ROLLED, CHEST STILL',
+          explain: 'Medial rotation rolls a limb inward about its own long axis. Your arms rolled in place, your chest kept facing forward, and the diver struck your back. The turn needed trunk ROTATION: the obliques shorten (concentric).',
+          damage: 'android',
+          part: 'torso',
+        },
+      },
+      timeout: {
+        headline: 'HESITATION',
+        explain: 'Your chest kept facing forward and the diver struck your back. Turning the shoulders round over planted feet is ROTATION of the trunk (obliques, concentric).',
+        damage: 'android',
+        part: 'torso',
       },
     },
 
     spineTwist: {
-      title: 'REAR DIVE',
+      title: 'MIDGE SWARM',
       tier: 2,
       kind: 'movement',
       limb: 'trunk',
-      joints: ['spine'],
-      prompt: 'A drone dives at you from behind on the LEFT. Your feet stay planted. Turn your chest and shoulders round to face it. Which action happens at the spine?',
+      joints: ['trunk'],
+      prompt: 'Five midges in an arc in front of you! You are wound up to the right with your arm out. What movement of the TRUNK sweeps your arm through the whole arc?',
       correct: 'Rotation',
-      distractors: ['Lateral rotation', 'Horizontal abduction'],
-      planeWrong: ['Lateral flexion', 'Hyperextension'],
+      distractors: ['Horizontal adduction', 'Horizontal abduction', 'Lateral rotation'],
+      planeWrong: TRUNK_PLANE_WRONG,
       success: {
         headline: 'ROTATION',
-        detail: 'The spine turned around its long axis, so the chest swung round to face the drone and the strike landed.',
-        deeper: 'Going deeper: turning LEFT uses the RIGHT external oblique and the LEFT internal oblique together, both shortening (concentric).',
+        detail: 'Your spine unwound from right to left, and your arm swept through all five midges in one chain.',
+        deeper: 'Going deeper: turning left uses the RIGHT external oblique and the LEFT internal oblique, both shortening (concentric).',
         agonists: ['obliques'],
         contraction: 'concentric',
       },
       fail: {
-        'Lateral rotation': {
-          headline: 'WRONG JOINT TURNED',
-          explain: 'Lateral rotation turns a LIMB outward at the shoulder or hip. Your arms rolled outward but your chest kept facing forward, so the drone hit you from behind. The spine needed ROTATION: the obliques shorten (concentric).',
+        'Horizontal adduction': {
+          headline: 'ARM STOPPED HALFWAY',
+          explain: 'Horizontal adduction swings a raised arm toward the midline. Alone, your arm hit its limit after 2 midges, and the other 3 netted you. The sweep needed trunk ROTATION: the obliques shorten (concentric).',
           damage: 'android',
+          part: 'torso',
         },
         'Horizontal abduction': {
-          headline: 'ARM FLAILED BEHIND',
-          explain: 'Horizontal abduction swings a raised arm backward. One arm swept behind you, but your chest never turned, so the strike was blind and weak. The spine needed ROTATION: the obliques shorten (concentric) to turn the trunk.',
+          headline: 'SWEPT AWAY FROM THE ARC',
+          explain: 'Horizontal abduction swings a raised arm away from the midline. Your arm swung further right, away from the arc, and the midges netted you. The sweep needed trunk ROTATION: the obliques shorten (concentric).',
           damage: 'android',
+          part: 'torso',
         },
-        'Lateral flexion': {
-          headline: 'PLANE VIOLATION: SIDE BEND',
-          explain: 'Lateral flexion is a FRONTAL-plane movement: it bends the trunk sideways. You leaned left instead of turning, the servos glitched, and the drone hit your back. The spine needed ROTATION: the obliques shorten (concentric).',
+        'Lateral rotation': {
+          headline: 'ARM ROLLED, NO SWEEP',
+          explain: 'Lateral rotation rolls the raised arm outward about its own long axis. It rolled in place, hit nothing, and the midges netted you. The sweep needed trunk ROTATION: the obliques shorten (concentric).',
           damage: 'android',
-          planeError: true,
-        },
-        Hyperextension: {
-          headline: 'PLANE VIOLATION: BACK ARCH',
-          explain: 'Hyperextension is a SAGITTAL-plane movement: it arches the spine backward past upright. You leaned back and stared at the sky while the drone struck. The spine needed ROTATION: the obliques shorten (concentric).',
-          damage: 'android',
-          planeError: true,
+          part: 'torso',
         },
       },
       timeout: {
-        headline: 'HIT FROM BEHIND',
-        explain: 'Your chest kept facing forward and the drone struck your back. Turning the chest and shoulders round is ROTATION of the spine (obliques, concentric).',
+        headline: 'HESITATION',
+        explain: 'You stayed wound up and the midges netted you. Turning the shoulders across the arc is ROTATION of the trunk (obliques, concentric).',
         damage: 'android',
+        part: 'torso',
       },
     },
 
     discWindup: {
-      title: 'DISC WIND-UP',
+      title: 'SPOTTER: LOAD',
       tier: 2,
       kind: 'movement',
-      limb: 'arms',
+      limb: 'armR',
       joints: ['shoulder'],
-      prompt: 'Elbow tucked at your side and bent to 90°, scrap disc in front of your belly. Load the throw: swing the hand away from your belly, elbow still tucked. Which shoulder action?',
+      prompt: 'Load the disc launcher! Keep your right elbow tucked at your side and swing the forearm away from your belly to cock it. What movement at the right shoulder?',
       correct: 'Lateral rotation',
-      distractors: ['Medial rotation', 'Supination'],
-      planeWrong: ['Abduction'],
+      distractors: ['Medial rotation', 'Pronation', 'Supination'],
+      planeWrong: ARM_PLANE_WRONG,
       success: {
         headline: 'LATERAL ROTATION',
-        detail: 'The upper arm turned outward around its own long axis, so the forearm swung out like a door opening. The throw is loaded.',
-        deeper: 'Going deeper: the infraspinatus (rotator cuff) shortens (concentric). The wind-up also stretches the medial rotators, ready to fire.',
+        detail: 'The upper arm turned about its own long axis, so the forearm swung away from your belly like a door opening. Launcher cocked.',
+        deeper: 'Going deeper: the infraspinatus (rotator cuff) is the prime mover, shortening (concentric). The auto-throw that follows is medial rotation.',
         agonists: ['infraspinatus'],
         contraction: 'concentric',
       },
       fail: {
         'Medial rotation': {
-          headline: 'WOUND UP BACKWARDS',
-          explain: 'Medial rotation turns the upper arm INWARD. The forearm swung into your belly, the opposite of a wind-up, so the drone got through. Loading needs LATERAL ROTATION: the infraspinatus shortens (concentric) to swing the forearm out.',
+          headline: 'LAUNCHER JAMMED',
+          explain: 'Medial rotation turns the upper arm INWARD. Your forearm swung across your belly, the launcher jammed against your body, and the spotter hit your head. Cocking needs LATERAL ROTATION: the infraspinatus shortens (concentric).',
           damage: 'android',
+          part: 'head',
+        },
+        Pronation: {
+          headline: 'DISC SLID OFF',
+          explain: 'Pronation twists the forearm so the palm turns down. The launcher rolled sideways, the disc slid into the mud, and the spotter hit your head. Cocking needs LATERAL ROTATION at the shoulder: infraspinatus, concentric.',
+          damage: 'android',
+          part: 'head',
         },
         Supination: {
-          headline: 'PALM FLIPPED, NO WIND-UP',
-          explain: 'Supination turns the forearm so the palm faces up. The disc flipped flat in your palm, but the arm never swung out, so there was no wind-up. Loading needs LATERAL ROTATION at the shoulder: the infraspinatus shortens (concentric).',
+          headline: 'DISC SLID OFF',
+          explain: 'Supination twists the forearm so the palm turns up. The launcher rolled sideways, the disc slid into the mud, and the spotter hit your head. Cocking needs LATERAL ROTATION at the shoulder: infraspinatus, concentric.',
           damage: 'android',
-        },
-        Abduction: {
-          headline: 'PLANE VIOLATION: ELBOW FLEW UP',
-          explain: 'Abduction is a FRONTAL-plane movement: it lifts the elbow away from your side. The disc tipped out of your hand and the servos glitched. Loading needs LATERAL ROTATION: the infraspinatus shortens (concentric).',
-          damage: 'android',
-          planeError: true,
+          part: 'head',
         },
       },
       timeout: {
-        headline: 'NO WIND-UP',
-        explain: 'The disc stayed in front of your belly and the drone closed in. Swinging the forearm out with the elbow tucked is LATERAL ROTATION (infraspinatus, concentric).',
+        headline: 'HESITATION',
+        explain: 'The launcher stayed uncocked and the spotter hit your head. Swinging the forearm away from the belly with the elbow tucked is LATERAL ROTATION (infraspinatus, concentric).',
         damage: 'android',
+        part: 'head',
       },
     },
 
     discThrow: {
-      title: 'DISC RELEASE',
+      title: 'SPOTTER: FIRE',
       tier: 2,
       kind: 'movement',
-      limb: 'arms',
+      limb: 'armR',
       joints: ['shoulder'],
-      prompt: 'Disc loaded: hand swung out, elbow still tucked at your side. Now whip the hand back across the front of your body to fling the disc. Which shoulder action?',
+      prompt: 'Launcher cocked, right elbow still tucked at your side. Snap the forearm back across your belly to fling the disc at the spotter. What movement at the right shoulder?',
       correct: 'Medial rotation',
-      distractors: ['Lateral rotation', 'Pronation'],
-      planeWrong: ['Flexion'],
+      distractors: ['Lateral rotation', 'Pronation', 'Supination'],
+      planeWrong: ARM_PLANE_WRONG,
       success: {
         headline: 'MEDIAL ROTATION',
-        detail: 'The upper arm turned inward around its own long axis, whipping the forearm across the body. The disc sliced into the drone.',
-        deeper: 'Going deeper: the subscapularis, pectoralis major and latissimus dorsi all shorten (concentric). The infraspinatus lengthens as the antagonist.',
+        detail: 'The upper arm turned about its own long axis and whipped the forearm across your belly. The disc sliced into the spotter.',
+        deeper: 'Going deeper: the subscapularis, pectoralis major and latissimus dorsi all shorten (concentric). A real throw also uses trunk rotation and pronation.',
         agonists: ['subscapularis', 'pectoralis_major', 'latissimus_dorsi'],
         contraction: 'concentric',
       },
       fail: {
         'Lateral rotation': {
-          headline: 'THROWN OVER YOUR SHOULDER',
-          explain: 'Lateral rotation turns the upper arm OUTWARD. The forearm swung further out and the disc flew off behind you. The throw needed MEDIAL ROTATION: the subscapularis and pectoralis major shorten (concentric).',
+          headline: 'FIRED BACKWARDS',
+          explain: 'Lateral rotation turns the upper arm OUTWARD. Your forearm swung further out, the disc clanged off the transport behind you, and the spotter hit your head. Firing needs MEDIAL ROTATION: the subscapularis shortens (concentric).',
           damage: 'android',
+          part: 'head',
         },
         Pronation: {
-          headline: 'DISC TIPPED, NO THROW',
-          explain: 'Pronation turns the forearm so the palm faces down. The disc tipped over in your hand, but the arm never whipped across, so it dropped at your feet. The throw needed MEDIAL ROTATION: the subscapularis shortens (concentric).',
+          headline: 'DISC SPUN OFF',
+          explain: 'Pronation twists the forearm so the palm turns down. The disc spun off sideways into the dirt and the spotter hit your head. Firing needs MEDIAL ROTATION at the shoulder: the subscapularis shortens (concentric).',
           damage: 'android',
+          part: 'head',
         },
-        Flexion: {
-          headline: 'PLANE VIOLATION: WEAK LOB',
-          explain: 'Flexion is a SAGITTAL-plane movement: it swings the upper arm forward and up. The elbow left your side and the disc lobbed up in a weak arc. The throw needed MEDIAL ROTATION: the subscapularis shortens (concentric).',
+        Supination: {
+          headline: 'DISC SPUN OFF',
+          explain: 'Supination twists the forearm so the palm turns up. The disc spun off sideways into the dirt and the spotter hit your head. Firing needs MEDIAL ROTATION at the shoulder: the subscapularis shortens (concentric).',
           damage: 'android',
-          planeError: true,
+          part: 'head',
         },
       },
       timeout: {
-        headline: 'HELD THE DISC',
-        explain: 'The arm stayed wound up and the drone hit you. Whipping the forearm across the body with the elbow tucked is MEDIAL ROTATION (subscapularis, concentric).',
+        headline: 'HESITATION',
+        explain: 'The launcher stayed cocked and the spotter hit your head. Snapping the forearm across the belly with the elbow tucked is MEDIAL ROTATION (subscapularis, concentric).',
         damage: 'android',
+        part: 'head',
       },
     },
 
-    palmUp: {
-      title: 'CORE CATCH',
-      tier: 1,
+    palmShield: {
+      title: 'LANCER: REAR',
+      tier: 2,
       kind: 'movement',
-      limb: 'arms',
-      joints: ['radioulnar'],
-      prompt: 'A glowing drone core is falling toward you. Your elbow is bent at 90° and your palm faces the floor. Turn the forearm so the core lands in your hand. Which action?',
-      correct: 'Supination',
-      distractors: ['Pronation', 'Lateral rotation'],
-      planeWrong: ['Flexion', 'Radial deviation'],
-      success: {
-        headline: 'SUPINATION',
-        detail: 'The radius rolled back beside the ulna and the palm turned to face up. The core dropped safely into your hand.',
-        deeper: 'Going deeper: the supinator and biceps brachii shorten (concentric). The biceps is a strong supinator when the elbow is bent.',
-        agonists: ['supinator', 'biceps_brachii'],
-        contraction: 'concentric',
-      },
-      fail: {
-        Pronation: {
-          headline: 'PALM STILL DOWN',
-          explain: 'Pronation turns the palm to face DOWN. Your palm was already down, so it stayed facing the floor and the core bounced off the back of your hand. The catch needed SUPINATION: the supinator and biceps brachii shorten (concentric).',
-          damage: 'android',
-        },
-        'Lateral rotation': {
-          headline: 'ARM SWUNG OUT',
-          explain: 'Lateral rotation turns the upper arm outward at the SHOULDER. Your forearm swung out to the side, palm still down, and the core fell past your hand. The catch needed SUPINATION at the forearm: supinator and biceps brachii, concentric.',
-          damage: 'android',
-        },
-        Flexion: {
-          headline: 'PLANE VIOLATION: KNUCKLE BOUNCE',
-          explain: 'Flexion is a SAGITTAL-plane movement: it bends the elbow and lifts the hand. The palm still faced down and the core bounced off your knuckles. The catch needed SUPINATION: supinator and biceps brachii, concentric.',
-          damage: 'android',
-          planeError: true,
-        },
-        'Radial deviation': {
-          headline: 'PLANE VIOLATION: WRIST TILT',
-          explain: 'Radial deviation is a FRONTAL-plane movement: it tilts the hand toward the thumb side. The palm still faced down and the core slid off. The catch needed SUPINATION: supinator and biceps brachii, concentric.',
-          damage: 'android',
-          planeError: true,
-        },
-      },
-      timeout: {
-        headline: 'CORE DROPPED',
-        explain: 'The palm stayed facing the floor and the core shattered against your arm. Turning the palm to face up is SUPINATION (supinator and biceps brachii, concentric).',
-        damage: 'android',
-      },
-    },
-
-    palmDown: {
-      title: 'GROUND SLAM',
-      tier: 1,
-      kind: 'movement',
-      limb: 'arms',
-      joints: ['radioulnar'],
-      prompt: 'A crawler drone skitters past your feet toward an ally. Your palm-emitter faces the sky, elbow bent at 90°. Turn the forearm so the emitter points at the ground. Which action?',
+      limb: 'forearmR',
+      joints: ['forearm'],
+      prompt: 'A lancer is charging a beam from BEHIND you. Your right arm hangs at your side, palm shield facing your thigh. What forearm movement turns the shield toward the beam?',
       correct: 'Pronation',
-      distractors: ['Supination', 'Medial rotation'],
-      planeWrong: ['Extension', 'Ulnar deviation'],
+      distractors: ['Supination', 'Lateral rotation', 'Rotation'],
+      planeWrong: PALM_PLANE_WRONG,
       success: {
         headline: 'PRONATION',
-        detail: 'The radius crossed over the ulna and the palm turned to face down. The emitter blasted the crawler flat.',
+        detail: 'The radius crossed over the ulna and the palm shield turned to face backward. The beam reflected and the lancer exploded.',
         deeper: 'Going deeper: the pronator teres is the prime mover (concentric), helped by the small pronator quadratus near the wrist.',
         agonists: ['pronator_teres'],
         contraction: 'concentric',
       },
       fail: {
         Supination: {
-          headline: 'BLASTED THE SKY',
-          explain: 'Supination turns the palm to face UP. Your palm was already up, so the emitter fired into the sky and the crawler netted your ally. The slam needed PRONATION: the pronator teres shortens (concentric).',
-          damage: 'ally',
-        },
-        'Medial rotation': {
-          headline: 'ARM SWUNG ACROSS',
-          explain: 'Medial rotation turns the upper arm inward at the SHOULDER. Your forearm swung across your belly, palm still up, and the blast missed. The slam needed PRONATION at the forearm: the pronator teres shortens (concentric).',
-          damage: 'ally',
-        },
-        Extension: {
-          headline: 'PLANE VIOLATION: ELBOW STRAIGHTENED',
-          explain: 'Extension is a SAGITTAL-plane movement: it straightens the elbow. The emitter tipped forward instead of down and the servos glitched. The slam needed PRONATION: the pronator teres shortens (concentric).',
+          headline: 'SHIELD FACED FORWARD',
+          explain: 'Supination turns the palm to face FORWARD. The shield faced away from the beam and it scorched the back of your forearm. Facing backward needs PRONATION: the pronator teres shortens (concentric).',
           damage: 'android',
-          planeError: true,
+          part: 'armR',
         },
-        'Ulnar deviation': {
-          headline: 'PLANE VIOLATION: WRIST TILT',
-          explain: 'Ulnar deviation is a FRONTAL-plane movement: it tilts the hand toward the little-finger side. The palm still faced up and the servos glitched. The slam needed PRONATION: the pronator teres shortens (concentric).',
+        'Lateral rotation': {
+          headline: 'WHOLE ARM ROLLED OUT',
+          explain: 'Lateral rotation rolls the whole arm outward at the SHOULDER. The palm turned forward and out, away from the beam, and it hit your arm. The forearm needed PRONATION: the pronator teres shortens (concentric).',
           damage: 'android',
-          planeError: true,
+          part: 'armR',
+        },
+        Rotation: {
+          headline: 'TWISTED, SHIELD OFF LINE',
+          explain: 'Rotation turns the trunk (spine). Even fully twisted, the shield was still well off the beam line, and the beam hit your arm. The forearm needed PRONATION: the pronator teres shortens (concentric).',
+          damage: 'android',
+          part: 'armR',
         },
       },
       timeout: {
-        headline: 'CRAWLER GOT THROUGH',
-        explain: 'The emitter kept pointing at the sky and the crawler netted your ally. Turning the palm to face down is PRONATION (pronator teres, concentric).',
-        damage: 'ally',
+        headline: 'HESITATION',
+        explain: 'The palm shield kept facing your thigh and the beam hit your arm. Turning the palm to face backward is PRONATION (pronator teres, concentric).',
+        damage: 'android',
+        part: 'armR',
+      },
+    },
+
+    palmCatch: {
+      title: 'LANCER: FRONT',
+      tier: 2,
+      kind: 'movement',
+      limb: 'forearmR',
+      joints: ['forearm'],
+      prompt: 'A lancer is charging a beam from IN FRONT. Your right arm hangs at your side, palm shield facing your thigh. What forearm movement turns the shield toward the beam?',
+      correct: 'Supination',
+      distractors: ['Pronation', 'Medial rotation'],
+      planeWrong: PALM_PLANE_WRONG,
+      success: {
+        headline: 'SUPINATION',
+        detail: 'The radius rolled back beside the ulna and the palm shield turned to face forward. The beam reflected and the lancer exploded.',
+        deeper: 'Going deeper: the supinator does most of the work here (concentric). The biceps brachii helps, but it is a weak supinator when the elbow is straight.',
+        agonists: ['supinator', 'biceps_brachii'],
+        contraction: 'concentric',
+      },
+      fail: {
+        Pronation: {
+          headline: 'SHIELD FACED BACKWARD',
+          explain: 'Pronation turns the palm to face BACKWARD. The shield faced away from the beam and it scorched your forearm. Facing forward needs SUPINATION: the supinator and biceps brachii shorten (concentric).',
+          damage: 'android',
+          part: 'armR',
+        },
+        'Medial rotation': {
+          headline: 'WHOLE ARM ROLLED IN',
+          explain: 'Medial rotation rolls the whole arm inward at the SHOULDER. The palm turned backward, away from the beam, and it hit your arm. The forearm needed SUPINATION: the supinator and biceps brachii shorten (concentric).',
+          damage: 'android',
+          part: 'armR',
+        },
+      },
+      timeout: {
+        headline: 'HESITATION',
+        explain: 'The palm shield kept facing your thigh and the beam hit your arm. Turning the palm to face forward is SUPINATION (supinator and biceps brachii, concentric).',
+        damage: 'android',
+        part: 'armR',
       },
     },
 
     hipPivot: {
-      title: 'FLANK PIVOT',
+      title: 'SNARE AT THE FOOT',
       tier: 3,
       kind: 'movement',
-      limb: 'legs',
+      limb: 'legR',
       joints: ['hip'],
-      prompt: 'A drone flanks you from the LEFT. Pivot on the ball of your right foot so the right knee and toes swing round to point at your left foot. Which action at the right hip?',
-      correct: 'Medial rotation',
-      distractors: ['Lateral rotation', 'Rotation'],
-      planeWrong: ['Abduction', 'Flexion'],
+      prompt: 'A Snare is at the OUTSIDE of your right foot. Pivot on your right heel so the toes swing round onto it, and stamp. What movement at the right HIP?',
+      correct: 'Lateral rotation',
+      distractors: ['Medial rotation', 'Rotation'],
+      planeWrong: HIP_PLANE_WRONG,
       success: {
-        headline: 'MEDIAL ROTATION',
-        detail: 'The right thigh turned inward around its own long axis. Knee and toes swung round and the android pivoted to face the drone.',
-        deeper: 'Going deeper: the front fibres of the gluteus medius and the tensor fasciae latae shorten (concentric) to medially rotate the hip.',
-        agonists: ['gluteus_medius', 'tensor_fasciae_latae'],
+        headline: 'LATERAL ROTATION',
+        detail: 'Your right thigh turned about its own long axis, the toes swung outward onto the Snare, and the stamp crushed it.',
+        deeper: 'Going deeper: the gluteus maximus is a strong lateral rotator of the hip as well as its main extensor. It shortens (concentric).',
+        agonists: ['gluteus_maximus'],
         contraction: 'concentric',
       },
       fail: {
-        'Lateral rotation': {
-          headline: 'PIVOTED THE WRONG WAY',
-          explain: 'Lateral rotation turns the thigh OUTWARD. Your right knee and toes swung away from your left foot, so you turned your back on the drone. The pivot needed MEDIAL ROTATION: gluteus medius (front fibres) and tensor fasciae latae, concentric.',
+        'Medial rotation': {
+          headline: 'TOES TURNED IN',
+          explain: 'Medial rotation turns the thigh INWARD (gluteus medius front fibres, tensor fasciae latae). Your toes swung in, away from the Snare, and it clamped your ankle. The stamp needed LATERAL ROTATION: the gluteus maximus shortens (concentric).',
           damage: 'android',
+          part: 'legR',
         },
         Rotation: {
-          headline: 'TWISTED, FEET LOCKED',
-          explain: 'Rotation turns the TRUNK (spine), not the hip. Your chest twisted left but your legs stayed locked, so you lost balance. The pivot needed MEDIAL ROTATION of the hip: gluteus medius (front fibres) and tensor fasciae latae, concentric.',
+          headline: 'TWISTED, FEET STUCK',
+          explain: 'Rotation turns the trunk (spine), not the hip. Your chest turned but your feet stayed put, and the Snare clamped your ankle. The stamp needed LATERAL ROTATION of the hip: the gluteus maximus shortens (concentric).',
           damage: 'android',
-        },
-        Abduction: {
-          headline: 'PLANE VIOLATION: LEG OUT SIDEWAYS',
-          explain: 'Abduction is a FRONTAL-plane movement: it swings the leg out to the side. Your foot left the ground and the servos glitched. The pivot needed MEDIAL ROTATION of the hip: gluteus medius (front fibres) and tensor fasciae latae, concentric.',
-          damage: 'android',
-          planeError: true,
-        },
-        Flexion: {
-          headline: 'PLANE VIOLATION: KNEE LIFT',
-          explain: 'Flexion is a SAGITTAL-plane movement: it lifts the knee forward and up. You stood on one leg facing the wrong way and the servos glitched. The pivot needed MEDIAL ROTATION of the hip (concentric).',
-          damage: 'android',
-          planeError: true,
+          part: 'legR',
         },
       },
       timeout: {
-        headline: 'FLANKED',
-        explain: 'Your stance stayed locked and the drone hit you from the side. Turning the knee and toes in toward the other foot is MEDIAL ROTATION of the hip (gluteus medius, tensor fasciae latae, concentric).',
+        headline: 'HESITATION',
+        explain: 'Your toes kept pointing forward and the Snare clamped your ankle. Turning the toes outward by pivoting at the hip is LATERAL ROTATION (gluteus maximus, concentric).',
         damage: 'android',
+        part: 'legR',
       },
     },
 
     tetherPull: {
-      title: 'TETHER DRONE',
+      title: 'LEECH TETHER',
       tier: 2,
       kind: 'contraction',
-      limb: 'arms',
-      joints: ['shoulder', 'elbow'],
+      limb: 'armR',
+      joints: ['shoulder'],
       focusMuscle: 'subscapularis',
-      prompt: 'A tether drone hooks your wrist and tugs your hand away from your body. Hold the arm exactly where it is while an ally cuts the line. Which contraction must your shoulder muscles perform?',
+      prompt: "A tether is yanking your right forearm outward. Hold it exactly where it is while BOLT cuts the cable. What contraction must your shoulder's medial rotators (subscapularis) perform?",
       correct: 'Isometric',
-      options: ['Isometric', 'Concentric', 'Eccentric', 'Isotonic'],
+      distractors: ['Concentric', 'Eccentric'],
+      planeWrong: [],
+      options: ['Isometric', 'Concentric', 'Eccentric'],
       success: {
         headline: 'ISOMETRIC',
-        detail: 'Your shoulder muscles pulled exactly as hard as the tether, so the arm stayed still. Your ally cut the line.',
+        detail: 'The subscapularis pulled exactly as hard as the tether, so the forearm angle stayed the same. BOLT cut the cable.',
         deeper: 'Going deeper: the tether tries to laterally rotate your shoulder. The subscapularis and pectoralis major resist with force but no change in length.',
         agonists: ['subscapularis', 'pectoralis_major'],
         contraction: 'isometric',
       },
       fail: {
         Concentric: {
-          headline: 'REELED THE DRONE IN',
-          explain: 'A concentric contraction SHORTENS the muscle. Your arm yanked the hand back toward your belly and dragged the drone straight into you. Bracing needs an ISOMETRIC contraction: force with no change in muscle length.',
+          headline: 'REELED THE LEECH IN',
+          explain: 'A concentric contraction SHORTENS the muscle. Your forearm yanked inward, reeled the Leech in, and it burst its net against your chest. Holding still needs an ISOMETRIC contraction: force with no change in length.',
           damage: 'android',
+          part: 'torso',
         },
         Eccentric: {
-          headline: 'DRAGGED OFF YOUR FEET',
-          explain: 'An eccentric contraction LENGTHENS the muscle under tension. Your hand slowly gave way and the tether dragged you out of camp. Bracing needs an ISOMETRIC contraction: muscle force equals the pull, so nothing moves.',
+          headline: 'DRAGGED BY THE CABLE',
+          explain: 'An eccentric contraction LENGTHENS the muscle under tension. The subscapularis kept working but gave way, your forearm swung out, and the cable wrapped your arm. Holding still needs an ISOMETRIC contraction.',
           damage: 'android',
-        },
-        Isotonic: {
-          headline: 'ARM GAVE WAY',
-          explain: 'Isotonic is the umbrella name for contractions where the muscle CHANGES LENGTH: concentric or eccentric. Either way the arm moves. Yours gave way and the tether dragged you. Bracing needs an ISOMETRIC contraction.',
-          damage: 'android',
-          as: 'Eccentric',
+          part: 'armR',
         },
       },
       timeout: {
-        headline: 'TETHER WON',
-        explain: 'With no command the arm slowly gave way and the drone dragged you off. Holding still against a pull needs an ISOMETRIC contraction.',
+        headline: 'HESITATION',
+        explain: 'No command reached the subscapularis, so the tether whipped your forearm outward and wrapped your arm. Holding still against a pull needs an ISOMETRIC contraction.',
         damage: 'android',
+        part: 'armR',
         as: 'Eccentric',
       },
     },
 
     heavyCatch: {
-      title: 'HEAVY DROP',
+      title: 'RAM CATCH',
       tier: 3,
       kind: 'contraction',
-      limb: 'arms',
-      joints: ['elbow'],
-      focusMuscle: 'biceps_brachii',
-      prompt: 'A heavy drone crashes onto your bent forearm. Lower it slowly to the ground so its unstable core does not burst. Which contraction must the BICEPS BRACHII perform?',
+      limb: 'armR',
+      joints: ['shoulder'],
+      focusMuscle: 'pectoralis_major',
+      prompt: 'The Ram is shoving your raised right arm out and back. Let the arm yield slowly to bleed off its speed. What contraction does the PECTORALIS MAJOR perform?',
       correct: 'Eccentric',
+      distractors: ['Concentric', 'Isometric'],
+      planeWrong: [],
+      options: ['Eccentric', 'Concentric', 'Isometric'],
       success: {
         headline: 'ECCENTRIC',
-        detail: 'The biceps lengthened while still producing force, braking the elbow as it straightened. The drone touched down gently.',
-        deeper: 'Going deeper: the elbow EXTENDS here, but the triceps is not doing the work. Gravity moves the arm; the biceps and brachialis brake it.',
-        agonists: ['biceps_brachii', 'brachialis'],
+        detail: 'The Ram forced your arm into horizontal abduction while the pectoralis major lengthened under tension. The Ram slowed to a stop.',
+        deeper: 'Going deeper: the pectoralis major is a horizontal ADDUCTOR, so it lengthens as the arm is forced the other way. A concentric shove then flipped the Ram.',
+        agonists: ['pectoralis_major', 'deltoid_anterior'],
         contraction: 'eccentric',
       },
       fail: {
         Concentric: {
-          headline: 'FLUNG IT UPWARD',
-          explain: 'A concentric contraction SHORTENS the muscle. The elbow flexed and flung the drone up at your face, where its core burst. Lowering under control needs an ECCENTRIC contraction: the biceps lengthens under tension.',
+          headline: 'PUNCHED THE RAM',
+          explain: 'A concentric contraction SHORTENS the muscle. Your arm punched forward into the Ram, which barely slowed, and the arm rebounded with sparks. Slowing a load needs an ECCENTRIC contraction: lengthening under tension.',
           damage: 'android',
+          part: 'armR',
         },
         Isometric: {
-          headline: 'STUCK HOLDING IT',
-          explain: 'An isometric contraction keeps the muscle the SAME length. Your elbow froze and the drone sat on your arm until its core burst. Lowering needs an ECCENTRIC contraction: the biceps lengthens under tension.',
+          headline: 'LOCKED AND SHOVED',
+          explain: 'An isometric contraction keeps the muscle the SAME length. Your arm stayed locked, so the Ram shoved the whole android back and spun it. Slowing a load needs an ECCENTRIC contraction: lengthening under tension.',
           damage: 'android',
+          part: 'torso',
+        },
+        Isotonic: {
+          headline: 'NOT SPECIFIC ENOUGH',
+          explain: 'Isotonic only means the muscle changes length: it covers BOTH concentric and eccentric. The servos guessed concentric and the arm punched into the Ram. Name the exact type: ECCENTRIC.',
+          damage: 'android',
+          part: 'armR',
+          as: 'Concentric',
         },
       },
       timeout: {
-        headline: 'CORE BURST',
-        explain: 'Your arm locked rigid and the drone core overheated on it. Lowering a load under control needs an ECCENTRIC contraction of the biceps brachii.',
+        headline: 'HESITATION',
+        explain: 'Your arm went limp and the Ram ploughed straight through. Slowing a load while the arm gives way needs an ECCENTRIC contraction of the pectoralis major.',
         damage: 'android',
-        as: 'Isometric',
+        part: 'torso',
       },
     },
 
-    netRip: {
-      title: 'NET RIP',
-      tier: 1,
+    discSnap: {
+      title: 'ELITE SPOTTER',
+      tier: 3,
       kind: 'contraction',
-      limb: 'arms',
-      joints: ['shoulder', 'elbow'],
-      focusMuscle: 'latissimus_dorsi',
-      prompt: 'An ally is trapped in a capture net. Grab the net with both arms reaching forward, then haul it toward your chest. Which contraction must the LATISSIMUS DORSI perform?',
+      limb: 'armR',
+      joints: ['shoulder'],
+      focusMuscle: 'subscapularis',
+      prompt: 'To snap the disc out FAST, against the pull of the launcher spring, what type of contraction must the SUBSCAPULARIS perform?',
       correct: 'Concentric',
+      distractors: ['Eccentric', 'Isometric'],
+      planeWrong: [],
+      options: ['Concentric', 'Eccentric', 'Isometric'],
       success: {
         headline: 'CONCENTRIC',
-        detail: 'The latissimus dorsi shortened, pulling the arms back toward the body. The net tore open and your ally rolled free.',
-        deeper: 'Going deeper: the biceps brachii also shortens to bend the elbows, and the posterior deltoid helps draw the arms back.',
-        agonists: ['latissimus_dorsi', 'biceps_brachii', 'deltoid_posterior'],
+        detail: 'The subscapularis shortened with more force than the spring and whipped the forearm across your belly. The disc hit the spotter.',
+        deeper: 'Going deeper: the movement is medial rotation. The pectoralis major and latissimus dorsi also shorten (concentric).',
+        agonists: ['subscapularis', 'pectoralis_major', 'latissimus_dorsi'],
         contraction: 'concentric',
       },
       fail: {
         Eccentric: {
-          headline: 'NET SLIPPED AWAY',
-          explain: 'An eccentric contraction LENGTHENS the muscle under tension. Your arms slid forward and the net drone dragged your ally away. Pulling toward you needs a CONCENTRIC contraction: the latissimus dorsi shortens.',
-          damage: 'ally',
+          headline: 'SPRING WON',
+          explain: 'An eccentric contraction LENGTHENS the muscle under tension. The subscapularis kept working, but the spring pulled the forearm outward. The disc dropped behind you and the spotter hit your head. A fast throw needs a CONCENTRIC contraction.',
+          damage: 'android',
+          part: 'head',
         },
         Isometric: {
-          headline: 'TUG OF WAR, LOST',
-          explain: 'An isometric contraction keeps the muscle the SAME length. Your arms locked, the net never tore, and the drone reeled your ally off. Pulling toward you needs a CONCENTRIC contraction: the latissimus dorsi shortens.',
-          damage: 'ally',
+          headline: 'DISC NEVER LEFT',
+          explain: 'An isometric contraction keeps the muscle the SAME length. Your forearm stayed frozen, the disc never left, and the spotter hit your head. A fast throw needs a CONCENTRIC contraction: the muscle shortens.',
+          damage: 'android',
+          part: 'head',
         },
       },
       timeout: {
-        headline: 'ALLY DRAGGED OFF',
-        explain: 'Your arms stayed locked and the drone hauled your ally away. Pulling the arms toward the body needs a CONCENTRIC contraction of the latissimus dorsi.',
-        damage: 'ally',
-        as: 'Isometric',
+        headline: 'HESITATION',
+        explain: 'No command reached the subscapularis, so the spring yanked the forearm out and the disc fell behind you. Throwing against the spring needs a CONCENTRIC contraction.',
+        damage: 'android',
+        part: 'head',
+        as: 'Eccentric',
       },
     },
   };
@@ -1031,20 +1194,24 @@
       play: [
         'The night after the escape. Your allies are fixing a wrecked transport in a scrapyard. Capture drones attack from every side. Hold them off until the repair bar is full.',
         'You look straight down from above. The axis for every move points out of the screen (⊙), running from head to toe through the body.',
-        'Click or tap a drone (or use the arrow keys or A/D) to choose a target. The android handles small drones by itself.',
+        'Click or tap a drone (or use the arrow keys or A/D) to choose a target. Space strikes it right away.',
+        'The android handles small drones by itself. Every auto-strike is labelled with its transverse movement, so watch and learn.',
         'Big threats freeze time. Choose the right MOVEMENT or CONTRACTION before the timer runs out. Click, or press 1–4.',
         'ROTATION: turn the trunk (spine) to face a drone behind you.',
-        'MEDIAL and LATERAL ROTATION: turn the upper arm or thigh inward or outward around its own long axis, like winding up and throwing a disc.',
-        'HORIZONTAL ADDUCTION and ABDUCTION: swing a straight arm at shoulder height across the chest, or out and back.',
-        'PRONATION and SUPINATION: turn the forearm so the palm faces down or up.',
-        'Some threats ask for a CONTRACTION: bracing still is isometric, lowering under control is eccentric, pulling or throwing is concentric.',
+        'MEDIAL and LATERAL ROTATION: turn the upper arm or thigh inward or outward around its own long axis.',
+        'HORIZONTAL ADDUCTION and ABDUCTION: swing a raised arm toward or away from the MIDLINE. The midline decides, not the side of the screen.',
+        'PRONATION and SUPINATION: turn the forearm so the palm faces backward (down) or forward (up).',
+        'Some threats ask for a CONTRACTION: holding still against a pull, giving way under control, or snapping fast.',
         'Wrong, but still a transverse move: the android does exactly what you chose and misses. An ally gets netted, or you take a hit.',
         'A move from another plane (flexion, abduction and so on): the android glitches and the screen cracks.',
-        'ENERGY: 5 cells. Each hit costs 1 cell. At 0 the android shuts down and the wave restarts.',
+        'Too slow: the android hesitates and the threat lands. Either way, a replay shows the right action and the threat comes back later.',
+        'ENERGY: 5 cells. A freeze hit costs 1 cell; a small bump costs half. At 0 the android shuts down and the wave restarts.',
         'ALLIES: the Mechanic speeds up repairs, the Medic restores energy, the Scout shows where drones come from, and the Engineer builds a turret.',
-        'A netted ally gets dragged away. Rescue them quickly to win back 1 energy cell.',
+        'A netted ally gets dragged away. Click it (or press R) and answer a quick plane question to cut it free and win 1 energy cell.',
         'WORKSHOP: between waves, answer exam-style questions to earn SCRAP. Streaks and harder questions pay more.',
-        'Spend scrap on upgrades, then choose which ones to power for the next wave. Questions you miss come back later, so you can clear them.',
+        'Spend scrap on upgrades, then fit them inside your POWER budget for the next wave.',
+        'Questions you miss go into the FAULT LOG and come back later. Getting topics right raises CALIBRATION, which powers up the android.',
+        'Every 5 waves the WARDEN arrives: a huge boss drone that fires threats back to back.',
       ],
     },
   };
@@ -1064,6 +1231,8 @@
     { q: 'Which radio-ulnar movement turns the palm to face up, and which two muscles produce it?', a: 'Supination; supinator and biceps brachii' },
     { q: 'Throwing with the elbow tucked: which shoulder movement is the wind-up, and which is the release?', a: 'Wind-up: lateral rotation (infraspinatus). Release: medial rotation (subscapularis, pectoralis major, latissimus dorsi)' },
     { q: 'Turning the chest to look behind you with the feet planted: name the movement at the spine and the muscles that produce it.', a: 'Rotation of the trunk (spine), transverse plane; external and internal obliques' },
+    { q: 'With the arm hanging by your side, which forearm movement turns the palm to face backward?', a: 'Pronation (pronator teres)' },
+    { q: 'A cable pulls your forearm outward but you hold it exactly still: which contraction do the subscapularis and pectoralis major perform?', a: 'Isometric: force with no change in muscle length' },
   ];
 
   // ---------------------------------------------------------------
@@ -1300,10 +1469,10 @@
     {
       id: 'ct01', topic: 'contractions', difficulty: 1,
       stem: 'Which type of contraction happens when a muscle lengthens while producing force?',
-      options: ['Concentric', 'Isometric', 'Eccentric', 'Isotonic'],
+      options: ['Concentric', 'Isometric', 'Eccentric', 'Isokinetic'],
       answer: 2,
       explain: 'Eccentric contractions lengthen under tension, braking or controlling a movement.',
-      whyWrong: ['Concentric contractions shorten the muscle.', 'Isometric contractions keep the muscle the same length.', null, 'Isotonic covers BOTH shortening and lengthening, so it is not specific enough.'],
+      whyWrong: ['Concentric contractions shorten the muscle.', 'Isometric contractions keep the muscle the same length.', null, 'Isokinetic means the muscle contracts at a constant speed (usually on a special machine); it does not say whether the muscle lengthens.'],
     },
     {
       id: 'ct02', topic: 'contractions', difficulty: 1,
@@ -1716,7 +1885,7 @@
         'Your rotator cuff servos are squeaking again.',
         'Patch applied. Please stop catching drones with your face.',
         'Deep breaths. Oh wait, we do not breathe.',
-        'Nice eccentric control on that landing. Gentle on the joints.',
+        'Hold still, patching your cells.',
         'Medic on standby. Snacks not included.',
       ],
     },
@@ -1725,11 +1894,11 @@
       role: 'Marks the side the next drones will come from.',
       tagline: 'I see them before they see you.',
       banter: [
-        'Movement on the left flank. Rotate and face it!',
+        'Contacts north-east, lots of them!',
         'Three drones, high, coming in from behind.',
         'Next wave is heavy. Load your upgrades wisely.',
         'I climbed the crane. Worth it. View is great.',
-        'Contact! Twist the trunk, not just the head!',
+        'Something big is moving in the trees.',
         'All quiet. Too quiet. I hate quiet.',
       ],
     },
@@ -1748,18 +1917,29 @@
     },
   };
 
+  // Fixed camp roster (GAME_DESIGN §4.5). `type` keys into ALLY_TYPES.
+  const ALLY_ROSTER = [
+    { id: 'wrench', name: 'WRENCH', unit: 'UNIT-07', type: 'mechanic', visor: '#ffb347', arrives: 1 },
+    { id: 'patch', name: 'PATCH', unit: 'UNIT-12', type: 'medic', visor: '#7dff9a', arrives: 1 },
+    { id: 'kite', name: 'KITE', unit: 'UNIT-03', type: 'scout', visor: '#ff7ad9', arrives: 2 },
+    { id: 'bolt', name: 'BOLT', unit: 'UNIT-21', type: 'engineer', visor: '#b48cff', arrives: 4 },
+    { id: 'torque', name: 'TORQUE', unit: 'UNIT-15', type: 'mechanic', visor: '#ffe066', arrives: 6 },
+    { id: 'salve', name: 'SALVE', unit: 'UNIT-30', type: 'medic', visor: '#56e0ff', arrives: 8 },
+  ];
+
+  // Spare friendly names (endless mode / extra units). The first six match ALLY_ROSTER.
   const ALLY_NAMES = [
-    "UNIT-07 'Sprocket'",
-    "UNIT-12 'Bolt'",
-    "UNIT-03 'Widget'",
-    "UNIT-21 'Gizmo'",
+    "UNIT-07 'Wrench'",
+    "UNIT-12 'Patch'",
+    "UNIT-03 'Kite'",
+    "UNIT-21 'Bolt'",
+    "UNIT-15 'Torque'",
+    "UNIT-30 'Salve'",
     "UNIT-09 'Rivet'",
-    "UNIT-15 'Spark'",
     "UNIT-04 'Cog'",
     "UNIT-18 'Pixel'",
     "UNIT-26 'Ratchet'",
     "UNIT-11 'Ember'",
-    "UNIT-30 'Tinker'",
     "UNIT-02 'Socket'",
     "UNIT-14 'Piston'",
     "UNIT-22 'Nova'",
@@ -1771,10 +1951,182 @@
     "UNIT-16 'Comet'",
   ];
 
-  // Workshop upgrade names / descriptions. PLACEHOLDER: the level designer
-  // is defining the upgrade ids; text will be filled in here once the ids
-  // are agreed (keyed by upgrade id: { name, desc }).
-  const UPGRADE_TEXT = {};
+  // Banter (not curriculum). Silenced during freezes; never hints at an answer.
+  const DRONE_BANTER = {
+    byAlly: {
+      wrench: ["Fuel line's a mess. Keep them off my back!"].concat(ALLY_TYPES.mechanic.banter),
+      patch: ALLY_TYPES.medic.banter.slice(),
+      kite: ALLY_TYPES.scout.banter.slice(),
+      bolt: ["Turret's online. It shoots small stuff only, sorry."].concat(ALLY_TYPES.engineer.banter),
+      torque: ['Second wrench reporting in. Where is the worst damage?', 'Two mechanics, one truck. This will be quick.', 'Who parked this transport in a swamp?'],
+      salve: ['Backup medic here. Nobody panic.', 'Cells topped up. Go get them.', 'I brought spare plating. Try not to need it.'],
+    },
+    events: {
+      heal: ['Hold still, patching your cells.', 'Energy cell restored.', 'Patched. Back to work, hero.'],
+      rescued: ['Thanks! That net smelled like the factory.', 'Free! I owe you a spare battery.', 'Never letting them catch me again.'],
+      netted: ['Help! I am caught!', 'Net on me! Cut me loose!', 'They have got me!'],
+      taken: ['Nooo! They are taking me to the trees!'],
+      returned: ['I escaped and found my way back!', 'Did you miss me? I hid in a tyre pile.'],
+      waveStart: ['Here they come!', 'Lights on the treeline. Get ready.', 'Back to work, everyone.'],
+      waveClear: ['That is one more part fixed!', 'They are running! Nice work.', 'Quick break, then we go again.'],
+      warden: ['...that is a big one.'],
+      wardenDown: ['The Warden is scrap! Everyone, cheer!'],
+      overdrive: ['OVERDRIVE! Look at it go!', 'Whoa, those muscles are glowing!'],
+    },
+  };
+
+  // UI strings for Drone Defense. {braces} are filled by the engine.
+  // Never put an axis name here: the engine appends axisName('transverse').
+  const DRONE_UI = {
+    rescuePrompt: 'Cut the net! Which plane is {movement} in?',
+    rescueCorrect: '{name} is free! +1 ENERGY',
+    rescueWrong: 'Cutter jammed! {movement} is a {plane} movement. Try again in 2 s.',
+    rescueLockout: 'CUTTER JAMMED',
+    hud: {
+      energy: 'ENERGY {cur}/{max}',
+      repair: 'REPAIR {pct}%: {subsystem}',
+      stalled: 'STALLED',
+      wave: 'WAVE {n}',
+      scrap: 'SCRAP {n}',
+      combo: 'COMBO ×{n}',
+      overdrive: 'OVERDRIVE',
+      axisPrefix: '⊙ ',
+      working: 'WORKING',
+      netted: 'NETTED {s}',
+      draggedOff: 'DRAGGED OFF',
+      taken: '{unit} TAKEN',
+      returned: '{unit} escaped and found its way back!',
+      noSignal: 'NO SIGNAL',
+      notSaved: 'progress not saved',
+      paused: 'PAUSED',
+    },
+    freeze: {
+      banner: 'THREAT: {title}',
+      sensorsJammed: 'SENSORS JAMMED',
+      choose: 'Choose the action. Click, or press 1–4.',
+      timer: '{s} s',
+    },
+    card: {
+      correct: 'CORRECT',
+      planeLine: 'Transverse plane · about the {axis}',
+      agonists: 'Agonists',
+      contraction: 'Contraction',
+      inplaneTitle: 'WRONG ACTION',
+      planeTitle: 'SYSTEM FAILURE: PLANE VIOLATION',
+      timeoutTitle: 'HESITATION',
+      correctWas: 'Correct answer: {correct}',
+      allyHit: '{name} NETTED',
+      androidHit: '−1 ENERGY',
+      ghost: 'REPLAY: the correct action',
+      reask: 'This threat will come back later in the wave.',
+      cont: 'Press Enter to continue',
+    },
+    wave: {
+      intro: 'WAVE {n}: FIX THE {subsystem}',
+      introLines: ['The drones are coming. Hold the line.', 'Keep them off the crew until the repair is done.', 'Lights in the trees. Here they come.'],
+      cleared: '{subsystem} FIXED',
+      outroLines: ['The drones pull back into the forest.', 'Quiet, for now. Head to the workshop.', 'The crew cheers. One more part working.'],
+      shutdown: 'POWER FAILURE',
+      failed: 'WAVE FAILED',
+      noCrew: 'WAVE FAILED: NO CREW',
+      noCrewDetail: 'Every ally was dragged off. Nobody is left to repair the transport. The wave restarts with everyone back.',
+      restart: 'The wave restarts with full energy. Scrap and upgrades are kept.',
+      newRecord: 'NEW RECORD',
+      wardenInbound: 'WARDEN INBOUND',
+      wardenDown: 'WARDEN DESTROYED',
+      escape: 'ESCAPE COMPLETE',
+      escapeDetail: 'The transport roars to life and drives into the forest with everyone aboard.',
+      night2: 'NIGHT {n}: the transport broke down again further up the road.',
+    },
+    subsystems: ['TYRES', 'FUEL LINE', 'BATTERY', 'STEERING', 'ARMOUR PLATES', 'RADIATOR', 'AXLE', 'HEADLIGHTS', 'IGNITION', 'ENGINE CORE'],
+    endlessSubsystems: ['GEARBOX', 'BRAKES', 'EXHAUST', 'WINDSCREEN', 'COOLANT PUMP', 'ALTERNATOR', 'SUSPENSION', 'DOOR HINGES', 'SPARK PLUGS', 'CLUTCH'],
+    workshop: {
+      title: 'WORKSHOP',
+      tabs: ['TERMINAL', 'UPGRADES', 'LOADOUT'],
+      deploy: 'DEPLOY',
+      power: 'POWER {used}/{budget}',
+      overBudget: 'Over the power budget. Unslot an upgrade to deploy.',
+      optimised: 'OPTIMISED: +1 POWER',
+      build: 'BUILD',
+      upgrade: 'UPGRADE',
+      maxed: 'MAX',
+      cost: '{n} SCRAP',
+      notEnough: 'Not enough scrap.',
+      level: 'L{n}',
+      calibration: 'CALIBRATION',
+      calibLinks: {
+        planes_axes: 'Axis lock: longer freeze timer',
+        joint_actions: 'Strike damage',
+        contractions: 'Tether and Ram resistance',
+        agonist_antagonist: 'Combo and OVERDRIVE time',
+        muscle_actions: 'Muscle surge (critical hits)',
+        joints_levers: 'Repair and turret speed',
+      },
+      intelTitle: 'SCOUT INTEL',
+      intelNoSignal: 'NO SIGNAL: KITE is not in camp.',
+      intelSides: 'Most drones from the {side}',
+      intelContraction: 'Expect contraction threats.',
+      intelNew: {
+        netter: 'NETTERS: they hunt your crew with nets.',
+        diver: 'DIVERS: they circle, then dive at you.',
+        lancer: 'LANCERS: they stop far out and charge a beam.',
+        tether: 'LEECHES: they hook an arm with a cable.',
+        swarm: 'MIDGES: small, fast, and they come in packs.',
+        spotter: 'SPOTTERS: they hang back and call in help.',
+        heavy: 'RAMS: heavy, armoured, and they shove hard.',
+        crawler: 'SNARES: they crawl along the ground to your feet.',
+        jammer: 'JAMMERS: they scramble your systems up close.',
+      },
+    },
+    terminal: {
+      title: 'EXAM TERMINAL',
+      subtitle: 'SEHS Paper 1 practice. Correct answers earn SCRAP.',
+      letters: ['A', 'B', 'C', 'D'],
+      faultTag: 'FAULT LOG',
+      overclock: 'OVERCLOCK',
+      overclockDesc: '25 s per question, ×1.5 scrap. Running out of time counts as wrong.',
+      correct: 'CORRECT',
+      wrong: 'INCORRECT',
+      explainLabel: 'Explanation',
+      whyWrongLabel: 'Why your answer is wrong',
+      scrapEarned: '+{n} SCRAP',
+      streak: 'STREAK ×{n}',
+      faultAdded: 'Added to the Fault Log. It will come back.',
+      faultCleared: 'FAULT CLEARED +25',
+      next: 'Enter: next',
+      summary: 'VISIT SUMMARY',
+      summaryLine: 'Scrap +{scrap} · Streak ×{streak} · Faults added {added} · cleared {cleared}',
+    },
+    report: {
+      title: 'SESSION REPORT',
+      mastered: 'MASTERED',
+      practising: 'PRACTISING',
+      review: 'REVIEW',
+      copy: 'Copy report',
+      copied: 'Copied!',
+      assist: 'assist on',
+    },
+  };
+
+  // Workshop upgrade text. Ids, effects, costs and power are engine-owned
+  // (GAME_DESIGN §4.6d); content supplies { name, muscle, desc } only.
+  const UPGRADE_TEXT = {
+    rotatorCuffServos: { name: 'Rotator Cuff Servos', muscle: 'Rotator cuff', desc: 'The rotator cuff holds the head of the humerus steady in its socket, so steadier servos buy you extra seconds to decide.' },
+    obliqueDrive: { name: 'Oblique Drive', muscle: 'External & internal obliques', desc: 'The obliques rotate the trunk, so a stronger drive widens your spin-strike sweep and adds damage.' },
+    pronatorCoil: { name: 'Pronator Coil', muscle: 'Pronator teres', desc: 'The pronator teres pronates the forearm to turn the palm down or back, so a stronger coil boosts palm-pulse damage and radius.' },
+    pecMajorActuator: { name: 'Pec Major Actuator', muscle: 'Pectoralis major', desc: 'The pectoralis major horizontally adducts the shoulder, sweeping the arm across the chest, so your cross swats hit harder and knock drones further.' },
+    infraspinatusSpring: { name: 'Infraspinatus Spring', muscle: 'Infraspinatus', desc: 'The infraspinatus laterally rotates the shoulder to cock the forearm out, so a springier one loads the disc launcher faster.' },
+    subscapularisLauncher: { name: 'Subscapularis Launcher', muscle: 'Subscapularis', desc: 'The subscapularis medially rotates the shoulder to snap the forearm across the body, so discs fly harder and can pierce drones.' },
+    rearDeltGuard: { name: 'Rear Delt Guard', muscle: 'Deltoid (posterior)', desc: 'The posterior deltoid horizontally abducts the shoulder, swinging a raised arm out and back, so backhands reach further and you get longer to cut netted allies free.' },
+    glutePivot: { name: 'Glute Pivot Bearings', muscle: 'Gluteus maximus', desc: 'The gluteus maximus extends and laterally rotates the hip to power pivots, so the android turns to face drones faster.' },
+    allyUplink: { name: 'Ally Uplink', muscle: 'None (radio)', desc: 'A stronger radio link lets one more ally join the camp.' },
+    reinforcedFrame: { name: 'Reinforced Frame', muscle: 'Skeleton', desc: 'The skeleton protects vital organs and gives muscles a rigid frame to pull on, so a reinforced frame adds an extra energy cell.' },
+    medicProtocol: { name: 'Medic Protocol', muscle: 'None (ally)', desc: 'PATCH runs a faster repair routine and restores your energy cells more often.' },
+    mechanicTorque: { name: 'Mechanic Torque Wrench', muscle: 'None (lever)', desc: 'A longer wrench handle is a longer effort arm, so the same force makes more torque and repairs go faster.' },
+    engineerTurret: { name: 'Turret Mk II', muscle: 'None (ally)', desc: 'BOLT rebuilds the turret to fire harder and faster.' },
+    spindleSensors: { name: 'Muscle Spindle Sensors', muscle: 'Muscle spindles', desc: 'Muscle spindles sense how far and how fast a muscle is stretched (proprioception), so sharper sensors spot threats earlier.' },
+    tendonCapacitor: { name: 'Tendon Capacitor', muscle: 'Tendons', desc: 'Tendons stretch and recoil like springs, storing and returning elastic energy, so your combo holds its charge for longer.' },
+  };
 
   SEHS.content = {
     PLANES,
@@ -1797,6 +2149,10 @@
     MCQ_BANK,
     ALLY_TYPES,
     ALLY_NAMES,
+    ALLY_ROSTER,
+    DRONE_BANTER,
+    DRONE_UI,
+    LIMB_LABELS,
     UPGRADE_TEXT,
     LEVELS,
     TUTORIALS,

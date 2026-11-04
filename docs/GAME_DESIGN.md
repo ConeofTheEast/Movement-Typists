@@ -252,7 +252,7 @@ Source brief: `docs/TRANSVERSE_BRIEF.md`. Teacher priorities: (1) educational (t
 
 **One-line pitch:** the night after the escape. The android stands guard at the centre of a scrapyard camp while its friends patch up a wrecked transport. Capture drones pour out of the forest. Routine drones get swatted, flicked and spun away automatically, with every strike a labelled transverse action. When a drone gets dangerous, time freezes and the student picks the action. Between waves, an exam terminal pays SCRAP for SEHS multiple-choice answers, and the scrap buys anatomy-themed upgrades.
 
-**Files (engine plan):** `js/transverse.js` (level class `DroneDefense`, same lifecycle as the sagittal level: `start / update(dt) / draw(ctx) / choose(i)`), `js/topdown.js` (top-down muscled rig `SEHS.TopAndroid`, plus ally and drone painters), `js/workshop.js` (terminal, upgrades, loadout, save). Reuse `SEHS.FX`, `SEHS.Audio`, the decision panel and the fail/feedback cards from `main.js`. Headless driver: `tools/playtest-transverse.js` (§4.13).
+**Files (engine plan):** `js/transverse.js` (level class `DroneDefense`, same lifecycle as the sagittal level: `start / update(dt) / draw(ctx) / choose(i)`), `js/android_top.js` (top-down muscled rig `SEHS.AndroidTop` + `SEHS.TopPose`; allies drawn with it at ~0.6 scale), `js/drones.js` (drone, arena and transport painters, drone FX and audio), `js/workshop.js` (terminal, upgrades, loadout, save). Reuse `SEHS.FX`, `SEHS.Audio`, the decision panel and the fail/feedback cards from `main.js`. Headless driver: `tools/playtest-transverse.js` (§4.13).
 
 ### 4.1 Camera, arena and HUD
 
