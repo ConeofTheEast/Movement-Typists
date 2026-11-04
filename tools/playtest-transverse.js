@@ -24,10 +24,10 @@
  *     --reduce       reduced flashing / shake setting
  *     --shots N      outcome frames per freeze (default 3)
  *     --practice     practice mode (untimed freezes; checks the timer never fires)
- *     --compare S    idle vs active: three fresh wave-2 runs of S seconds each:
- *                    idle (no input, freezes time out), idle-targeting (no
- *                    targeting, freezes answered right), active (targets with
- *                    Space, freezes answered right). Prints a table.
+ *     --compare S    four fresh wave-2 runs of S seconds each: idle (no input,
+ *                    freezes time out), spam (Space mashed every 0.1 s, no
+ *                    answers), answers (freezes answered right, no targeting),
+ *                    both (Space when the target is in reach + right answers).
  *
  * Screenshots: each freeze (decide), outcome frames, each fail card, replay,
  * cards and the workshop. Prints a final JSON state and `no errors`; exits 1
@@ -272,7 +272,7 @@ const SHOTS = +val('shots', 3);
   const CMP = +val('compare', 0);
   if (CMP) {
     const runs = [];
-    for (const kind of ['idle', 'idle-targeting', 'active']) {
+    for (const kind of ['idle', 'spam', 'answers', 'both']) {
       const r = await pg.evaluate(({ kind, secs }) => {
         const L = new window.SEHS.DroneDefense(window.game, { wave: 2 });
         window.game.level = L;
@@ -280,15 +280,18 @@ const SHOTS = +val('shots', 3);
         const e0 = L.energy;
         let lost = 0, netted = 0, prevE = L.energy, strikes = 0;
         for (let t = 0; t < secs; t += 1 / 30) {
-          if (kind !== 'idle' && L.mode === 'decide') L.choose(L.freeze.options.indexOf(L.freeze.st.correct));
+          const answers = kind === 'answers' || kind === 'both';
+          if (answers && L.mode === 'decide') L.choose(L.freeze.options.indexOf(L.freeze.st.correct));
           if (L.mode === 'failed') L.retry();
-          if (kind === 'active' && L.mode === 'play' && Math.round(t * 30) % 9 === 0) { L.focusReq = true; strikes++; }
+          const f = Math.round(t * 30);
+          const press = (kind === 'spam' && f % 3 === 0) || (kind === 'both' && f % 6 === 0 && L.mode === 'play' && ((L.selected && !L.selected.dead && L.planAction(L.selected)) || (L.suggest && L.planAction(L.suggest))));
+          if (press && L.mode === 'play') { L.onKey({ key: ' ' }); strikes++; }
           L.update(1 / 30);
           if (L.energy < prevE) lost += prevE - L.energy;
           prevE = L.energy;
           if (L.mode === 'lost' || L.mode === 'summary' || L.mode === 'clear') break;
         }
-        return { kind, mode: L.mode, energyLost: lost, energyLeft: L.energy, shutdown: L.mode === 'lost' && L.lostWhy === 'shutdown', allies: L.allies.map((a) => a.state).join(','), netted: L.ws.netted, kills: L.ws.kills, repairPct: Math.round(100 * L.repair / L.cfg.need), freezes: L.ws.freezes, spacePresses: strikes };
+        return { kind, mode: L.mode, energyLost: lost, energyLeft: L.energy, shutdown: L.mode === 'lost' && L.lostWhy === 'shutdown', allies: L.allies.map((a) => a.state).join(','), netted: L.ws.netted, kills: L.ws.kills, repairPct: Math.round(100 * L.repair / L.cfg.need), freezes: L.ws.freezes, surges: L.ws.surges || 0, whiffs: L.ws.whiffs || 0, spacePresses: strikes };
       }, { kind, secs: CMP });
       runs.push(r);
       await pg.waitForTimeout(200);

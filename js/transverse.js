@@ -699,6 +699,7 @@
         d.hit = Math.max(0, d.hit - wdt * 5);
         if (d.kx || d.ky) { d.x += d.kx * wdt; d.y += d.ky * wdt; d.kx *= Math.max(0, 1 - wdt * 6); d.ky *= Math.max(0, 1 - wdt * 6); if (Math.abs(d.kx) + Math.abs(d.ky) < 2) { d.kx = 0; d.ky = 0; } }
         if (d.staged) continue;
+        if (d.stunT > 0) { d.stunT -= wdt; continue; } // stunned by a SURGE
         const spd = DT[d.type].speed * sp;
         const dA = dist(d.x, d.y, AX, AY);
         const th = bearing(d.x, d.y);
@@ -1655,6 +1656,7 @@
       this.failInfo = null;
       this.mode = 'resume';
       this.modeT = 0;
+      if (ok) this.surge(!F.reask);
       (this.pendingToasts || []).forEach((txt) => this.toastPush(txt));
       this.pendingToasts = [];
     }
@@ -2113,7 +2115,7 @@
       if (this.selected && !this.selected.dead && this.planAction(this.selected)) return { d: this.selected, chosen: true };
       let best = null, bd = 1e9;
       for (const d of this.drones) {
-        if (d.dead || d.staged || d.retreat || !AUTO_TYPES[d.type]) continue;
+        if (d.dead || d.staged || d.retreat || (!AUTO_TYPES[d.type] && !(this.surgeT > 0)) || d.type === 'warden') continue;
         if (!this.planAction(d)) continue;
         let near = dist(d.x, d.y, AX, AY) * 0.6;
         for (const a of this.allies) if (a.state !== 'taken') near = Math.min(near, dist(d.x, d.y, a.x, a.y));
@@ -2281,7 +2283,7 @@
     }
 
     updateCombat(wdt) {
-      const od = this.overdrive > 0 ? 2 : 1;
+      const od = this.overdrive > 0 || this.surgeT > 0 ? 2 : 1;
       for (const k in this.cd) this.cd[k] = Math.max(0, this.cd[k] - wdt * od);
       if (this.action) { this.updateAction(wdt); return; }
       this.pl.pose = TopPose.lerp(this.pl.pose, this.restPose(), Math.min(1, wdt * 10));
@@ -2292,7 +2294,10 @@
         const plan = tgt && this.planAction(tgt);
         this.focusReq = false;
         if (plan) { this.startAction(plan, tgt, true); this.pending = null; return; }
-        if (tgt && this.time > (this.oorT || 0)) { this.oorT = this.time + 1.5; this.pop(AX, AY - 80, 'OUT OF REACH', '#9aa5b1', 16); }
+        // nothing in reach: a WHIFF. The swing hits air, both arms recover
+        // slowly (auto-swats wait too) and the combo resets: mashing costs.
+        this.whiff();
+        return;
       }
       const at = this.autoTarget();
       if (!at) { this.pending = null; return; }
@@ -2303,6 +2308,38 @@
         if (plan) this.startAction(plan, at.d, false);
         this.pending = null;
       }
+    }
+
+    whiff() {
+      const A = this.actionPoses('cross', 'R', -40);
+      this.action = { plan: { kind: 'whiff', side: 'R', th: -40 }, A: Object.assign({}, A, { label2: null }), t: 0, d: null, focus: false, hit: true, l2: true };
+      this.cd.L = Math.max(this.cd.L, 0.9); this.cd.R = Math.max(this.cd.R, 0.9);
+      this.pending = null;
+      this.breakCombo();
+      this.stats.whiffs = (this.stats.whiffs || 0) + 1; this.ws.whiffs = (this.ws.whiffs || 0) + 1;
+      Audio.whoosh();
+      if (this.time > (this.oorT || 0)) { this.oorT = this.time + 0.9; this.pop(AX, AY - 80, 'WHIFF: NOTHING IN REACH', '#9aa5b1', 16); }
+    }
+
+    // SURGE: the reward for a correct freeze answer. A cyan shockwave hits or
+    // stuns the drones around the camp, every drone is auto-struck for a few
+    // seconds, and the repair jumps. First-try answers surge harder.
+    surge(first) {
+      const R = first ? 300 : 230;
+      this.surgeT = first ? 4 : 3;
+      this.fx.empPulse(AX, AY, R);
+      if (!this.fx.reduce) this.fx.doFlash(0.18, '120,230,255');
+      Audio.empPulse && Audio.empPulse();
+      for (const d of this.drones) {
+        if (d.dead || d.staged || d.type === 'warden') continue;
+        const dd = dist(d.x, d.y, AX, AY);
+        if (dd <= R) this.damageDrone(d, first ? 3 : 2, { noStop: true, noCrit: true });
+        if (!d.dead && dd <= R * 1.6) d.stunT = this.surgeT;
+      }
+      const add = this.cfg.need * (first ? 0.1 : 0.06);
+      this.repair = Math.min(this.cfg.need, this.repair + add);
+      this.ws.surges = (this.ws.surges || 0) + 1;
+      this.pop(AX, AY - 110, `SURGE! +${Math.round(add / this.cfg.need * 100)}% REPAIR`, '#8ff0ff', 28);
     }
 
     floater(part, text, col, life, kind) {
@@ -2321,7 +2358,7 @@
       const k = e.key;
       if (k === 'a' || k === 'A' || k === 'ArrowLeft') { this.cycleTarget(-1); return true; }
       if (k === 'd' || k === 'D' || k === 'ArrowRight' || k === 'Tab') { this.cycleTarget(1); return true; }
-      if (k === ' ' || k === 'Spacebar') { this.focusReq = true; return true; }
+      if (k === ' ' || k === 'Spacebar') { if ((this.spaceCd || 0) <= 0) { this.spaceCd = 0.35; this.focusReq = true; } return true; }
       if (k === 'r' || k === 'R') {
         const net = this.allies.filter((a) => a.state === 'netted').sort((a, b) => a.netT - b.netT)[0];
         if (net) this.startRescue(net);
@@ -2373,6 +2410,7 @@
     update(dt) {
       this.time += dt;
       this.hitFlash = Math.max(0, (this.hitFlash || 0) - dt);
+      this.spaceCd = Math.max(0, (this.spaceCd || 0) - dt);
       const m = this.mode;
       let wdt = 0;
       if (m === 'intro') { this.modeT += dt; wdt = dt; if (this.modeT > this.introLen()) { this.mode = 'play'; this.modeT = 0; } }
@@ -2409,6 +2447,7 @@
           this.comboT -= wdt;
           if (this.comboT <= 0 && this.combo > 0) this.combo = 0;
           this.overdrive = Math.max(0, this.overdrive - wdt);
+          this.surgeT = Math.max(0, (this.surgeT || 0) - wdt);
           this.updateDirector(wdt);
           const bossOk = !this.cfg.boss || (this.warden && this.warden.dead);
           if (this.repair >= this.cfg.need && bossOk && this.mode === 'play') this.clearWave();
@@ -2559,6 +2598,11 @@
     drawAndroid(ctx, opts) {
       const F = this.freeze, pl = this.pl, reduce = this.fx.reduce;
       const x = AX + pl.ox, y = AY + pl.oy;
+      if (this.surgeT > 0) {
+        const p = reduce ? 0.6 : 0.5 + 0.3 * Math.sin(this.time * 8);
+        ctx.save(); ctx.strokeStyle = `rgba(143,240,255,${0.35 + 0.3 * p})`; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(x, y, 70 + 6 * p, 0, TAU); ctx.stroke(); ctx.restore();
+      }
       if (this.overdrive > 0) {
         const p = reduce ? 0.6 : 0.5 + 0.3 * Math.sin(this.time * 10);
         const g = ctx.createRadialGradient(x, y, 10, x, y, 110);
@@ -2738,7 +2782,7 @@
       // body
       const hpFrac = d.maxHp > 1 && d.type !== 'warden' && d.hp < d.maxHp && !d.staged ? d.hp / d.maxHp : null;
       const sel = this.selected === d && !this.freeze;
-      if (spec.art) DroneArt.draw(ctx, spec.art, d.x, d.y, d.ang, t, { hp: hpFrac, elite: d.elite, hit: d.hit, targeted: sel, reduce, seed: d.seed, scale: spec.scale || 1 });
+      if (spec.art) DroneArt.draw(ctx, spec.art, d.x, d.y, d.ang, t, { hp: hpFrac, elite: d.elite, hit: d.hit, targeted: sel, reduce, seed: d.seed, scale: spec.scale || 1, stunned: d.stunT > 0 });
       if (spec.overlay) this.drawOverlay(ctx, d, spec.overlay);
       if (!spec.art && sel) DroneArt.draw(ctx, 'swarm', -999, -999, 0, t, {});
       if (d.type === 'warden') this.drawWardenOver(ctx, d);
@@ -3222,7 +3266,8 @@
         ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(1110, 38, 100, 4);
         ctx.fillStyle = '#ffe066'; ctx.fillRect(1110, 38, 100 * clamp(this.comboT / keep, 0, 1), 4);
       }
-      if (this.overdrive > 0) { ctx.fillStyle = '#ff6a3d'; ctx.font = '900 14px ui-monospace, monospace'; ctx.fillText(`${UI.hud.overdrive} ${this.overdrive.toFixed(1)}s`, 1110, 56); }
+      if (this.surgeT > 0) { ctx.fillStyle = '#8ff0ff'; ctx.font = '900 14px ui-monospace, monospace'; ctx.fillText(`SURGE ${this.surgeT.toFixed(1)}s`, 1110, 56); }
+      else if (this.overdrive > 0) { ctx.fillStyle = '#ff6a3d'; ctx.font = '900 14px ui-monospace, monospace'; ctx.fillText(`${UI.hud.overdrive} ${this.overdrive.toFixed(1)}s`, 1110, 56); }
       // ALLY ROSTER (bottom-right)
       const list = this.allies;
       const RH = 36, bw = 236, bx = W - bw - 10, by0 = H - 10 - list.length * (RH + 3);
