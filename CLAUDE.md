@@ -5,7 +5,7 @@ Educational SEHS game ("Kinetic Escape"). Read `docs/AGENTIC_WORKFLOW.md` before
 ## Ground rules
 
 - **Content accuracy beats everything.** Curriculum wording lives only in `js/content.js`. Plane ↔ axis pairs are sagittal ↔ frontal axis, frontal ↔ sagittal axis, and transverse ↔ longitudinal axis.
-- **Transverse level is PAUSED.** Do not build it unless the teacher says so.
+- **Transverse level (Drone Defense) is UN-PAUSED** (teacher, 2026-11-04). Its brief is `docs/TRANSVERSE_BRIEF.md`.
 - The game must keep running from `file://`. That means no ES modules, no bundler and no external assets. Use plain scripts on the `window.SEHS` namespace.
 - Pose angles are in degrees and relative to the parent segment (flexion +, dorsiflexion +). The full convention is in AGENTIC_WORKFLOW §4.3.
 - Every hazard needs success, each wrong branch, timeout and checkpoint-reset behaviour.
