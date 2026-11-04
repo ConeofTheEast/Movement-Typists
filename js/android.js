@@ -186,6 +186,30 @@
   const MUSCLE_BASE = '#9b2d38';
   const DARK = '#0b0f15';
 
+  // ---------------- sprite skin (optional, see js/sprites.js) ----------------
+  // Draws an image part so that its pivot (proximal joint) lands on A and its
+  // tip (distal joint) lands on B: rotation + uniform scale from the bone.
+  function drawPart(ctx, part, A, B, dim) {
+    const img = part.img;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const P = [part.pivot[0] * iw, part.pivot[1] * ih], T = [part.tip[0] * iw, part.tip[1] * ih];
+    const li = Math.hypot(T[0] - P[0], T[1] - P[1]) || 1;
+    const ls = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const rot = Math.atan2(B[1] - A[1], B[0] - A[0]) - Math.atan2(T[1] - P[1], T[0] - P[0]);
+    ctx.save();
+    ctx.translate(A[0], A[1]);
+    ctx.rotate(rot);
+    const k = ls / li;
+    ctx.scale(k, k);
+    if (dim) { ctx.globalAlpha *= 1 - dim * 0.35; ctx.filter = `brightness(${(1 - dim * 0.75).toFixed(2)})`; }
+    ctx.drawImage(img, -P[0], -P[1]);
+    ctx.restore();
+    if (SEHS.Sprites && SEHS.Sprites.debug) {
+      ctx.fillStyle = '#0f0'; ctx.fillRect(A[0] - 2, A[1] - 2, 4, 4);
+      ctx.fillStyle = '#f0f'; ctx.fillRect(B[0] - 2, B[1] - 2, 4, 4);
+    }
+  }
+
   // ---------------- Android class ----------------
   class Android {
     constructor() {
@@ -290,6 +314,14 @@
 
     drawLeg(ctx, r, s, o, dim) {
       const L = r[s];
+      const sk = o.skin;
+      if (sk && sk.thigh && sk.shank && sk.foot) {
+        drawPart(ctx, sk.thigh, L.thigh.P, L.thigh.D, dim);
+        drawPart(ctx, sk.shank, L.shank.P, L.shank.D, dim);
+        drawPart(ctx, sk.foot, L.foot.P, L.toe, dim);
+        for (const m of LEG_MUSCLES) this.drawMuscle(ctx, m, r, s, o, dim);
+        return;
+      }
       this.bone(ctx, L.thigh.P, L.thigh.D, 6.5 * S, dim);
       this.bone(ctx, L.shank.P, L.shank.D, 5.5 * S, dim);
       // foot
@@ -312,6 +344,15 @@
 
     drawArm(ctx, r, s, o, dim) {
       const L = r[s];
+      const sk = o.skin;
+      if (sk && sk.upper_arm && sk.forearm && sk.hand) {
+        drawPart(ctx, sk.upper_arm, L.upper.P, L.upper.D, dim);
+        drawPart(ctx, sk.forearm, L.fore.P, L.fore.D, dim);
+        for (const m of ARM_MUSCLES) this.drawMuscle(ctx, m, r, s, o, dim);
+        const f = L.fore;
+        drawPart(ctx, sk.hand, f.D, [f.D[0] + f.u[0] * DIM.hand * S, f.D[1] + f.u[1] * DIM.hand * S], dim);
+        return;
+      }
       this.bone(ctx, L.upper.P, L.upper.D, 5 * S, dim);
       this.bone(ctx, L.fore.P, L.fore.D, 4.2 * S, dim);
       for (const m of ARM_MUSCLES) this.drawMuscle(ctx, m, r, s, o, dim);
@@ -327,6 +368,11 @@
     drawTorso(ctx, r, o) {
       const tp = r.tp;
       const status = o.status || 'ok';
+      if (o.skin && o.skin.torso) {
+        drawPart(ctx, o.skin.torso, r.torso.P, r.torso.D, 0);
+        this.drawCore(ctx, tp(3, 44), status);
+        return;
+      }
       // pelvis
       ctx.fillStyle = '#4f5964';
       ctx.strokeStyle = '#161b22';
@@ -365,16 +411,7 @@
         const a = tp(-6, d), b = tp(8, d);
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       }
-      // power core
-      const core = tp(3, 44);
-      const pulse = 0.6 + 0.4 * Math.sin(this.time * (status === 'ok' ? 4 : 18));
-      const cc = status === 'ok' ? '#56e0ff' : status === 'warn' ? '#ffb020' : '#ff3040';
-      ctx.save();
-      ctx.shadowColor = cc; ctx.shadowBlur = 14 * pulse;
-      ctx.fillStyle = cc;
-      ctx.globalAlpha = 0.5 + 0.5 * pulse;
-      ctx.beginPath(); ctx.arc(core[0], core[1], 4.2 * S, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+      this.drawCore(ctx, tp(3, 44), status);
       // neck
       const n0 = r.torso.D;
       const tu = r.torso.u;
@@ -386,9 +423,32 @@
       }
     }
 
+    drawCore(ctx, core, status) {
+      const pulse = 0.6 + 0.4 * Math.sin(this.time * (status === 'ok' ? 4 : 18));
+      const cc = status === 'ok' ? '#56e0ff' : status === 'warn' ? '#ffb020' : '#ff3040';
+      ctx.save();
+      ctx.shadowColor = cc; ctx.shadowBlur = 14 * pulse;
+      ctx.fillStyle = cc;
+      ctx.globalAlpha = 0.5 + 0.5 * pulse;
+      ctx.beginPath(); ctx.arc(core[0], core[1], 4.2 * S, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
     drawHead(ctx, r, o) {
       const h = r.head;
       const status = o.status || 'ok';
+      const vcol = o.visor && status === 'ok' ? o.visor : status === 'ok' ? '#56e0ff' : status === 'warn' ? '#ffb020' : '#ff3040';
+      if (o.skin && o.skin.head) {
+        drawPart(ctx, o.skin.head, r.torso.D, r.headTop, 0);
+        // status light over the sprite's eye so failures still read clearly
+        ctx.save();
+        ctx.translate(h.c[0], h.c[1]); ctx.rotate(h.ang);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = vcol; ctx.globalAlpha = 0.7;
+        ctx.beginPath(); ctx.ellipse(h.r * 0.68, -h.r * 0.08, h.r * 0.22, h.r * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        return;
+      }
       ctx.save();
       ctx.translate(h.c[0], h.c[1]);
       ctx.rotate(h.ang);
@@ -407,7 +467,7 @@
       ctx.fillStyle = '#3d4650';
       ctx.beginPath(); ctx.arc(-R * 0.2, 0, R * 0.32, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       // visor
-      const vc = status === 'ok' ? '#56e0ff' : status === 'warn' ? '#ffb020' : '#ff3040';
+      const vc = vcol;
       ctx.fillStyle = '#0d1a22';
       ctx.beginPath();
       ctx.moveTo(R * 0.25, -R * 0.45); ctx.lineTo(R * 0.98, -R * 0.3); ctx.lineTo(R * 0.98, R * 0.22); ctx.lineTo(R * 0.25, R * 0.18);
@@ -532,6 +592,7 @@
         const st = this.state[m.id + 'N'];
         if (!st._mid) continue;
         if (o.labels === 'active' && st.q < 0.2) continue;
+        if (o.labelOnly && o.labelOnly !== m.id) continue;
         const nm = names[m.id] ? names[m.id].name : m.id;
         const dir = m.pts[0][2] + m.pts[1][2] >= 0 ? 1 : -1;
         const ox = st._mid[0] + st._n[0] * 0 + (dir > 0 ? 34 : -34);

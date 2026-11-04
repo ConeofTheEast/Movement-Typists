@@ -73,12 +73,13 @@
       const con = C.CONTRACTIONS[s.contraction];
       const names = s.agonists.map((id) => C.MUSCLES[id].name).join(', ');
       const planeLine = st.kind === 'movement'
-        ? `<div class="t-sub">${plane.name} · ${plane.axis}</div>`
+        ? `<div class="t-sub">${plane.name} · ${C.axisName('sagittal')}</div>`
         : `<div class="t-sub">${con.def}</div>`;
-      $('toast').innerHTML = `<div class="t-head">✔ ${s.headline}</div>${planeLine}<div class="t-body">${s.detail}</div><div class="t-mus"><span class="chip" style="--c:${con.color}">${con.letter}</span>${names}: ${con.name.toLowerCase()}</div>`;
+      const deeper = s.deeper ? `<div class="t-deep">${s.deeper}</div>` : '';
+      $('toast').innerHTML = `<div class="t-head">✔ ${s.headline}</div>${planeLine}<div class="t-body">${s.detail}</div>${deeper}<div class="t-mus"><span class="chip" style="--c:${con.color}">${con.letter}</span>${names}: ${C.contractionLabel(s.contraction).toLowerCase()}</div>`;
       this.show('toast');
       clearTimeout(this._tt);
-      this._tt = setTimeout(() => this.hide('toast'), 3600);
+      this._tt = setTimeout(() => this.hide('toast'), s.deeper ? 5200 : 3600);
     },
 
     showFail(info, stats) {
@@ -91,7 +92,7 @@
       $('f-choice').textContent = info.choice;
       $('f-explain').textContent = info.explain;
       const names = s.agonists.map((id) => C.MUSCLES[id].name).join(', ');
-      $('f-correct').innerHTML = `<b>${st.correct}</b>: ${s.detail}<br><span class="dim">${st.kind === 'movement' ? `${pl.name} · ${pl.axis} (${pl.axisAlt})` : con.def}</span><br><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${con.name.toLowerCase()}`;
+      $('f-correct').innerHTML = `<b>${st.correct}</b>: ${s.detail}${s.deeper ? `<br><span class="dim">${s.deeper}</span>` : ''}<br><span class="dim">${st.kind === 'movement' ? `${pl.name} · axis: ${C.axisAllNames('sagittal')}` : con.def}</span><br><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${C.contractionLabel(s.contraction).toLowerCase()}`;
       $('fail').classList.toggle('plane', info.kind === 'plane');
       setTimeout(() => this.show('fail'), 350);
     },
@@ -117,6 +118,8 @@
       const p = Math.min(1, Math.max(0, level.scrollX / level.exitX));
       $('prog-fill').style.width = p * 100 + '%';
       const s = level.stats;
+      const ax = C.axisName('sagittal');
+      if (this._ax !== ax) { this._ax = ax; $('plane-tag').innerHTML = `<b>SAGITTAL PLANE</b> · <span class="ax">${ax}</span> ⊙`; }
       $('hud-stats').innerHTML = `<span>HAZARD <b>${Math.min(level.cur + 1, level.obs.length)}/${level.obs.length}</b></span><span>CORRECT <b>${s.correct}</b></span><span>STREAK <b>${s.streak}</b></span>`;
       const list = $('monitor-list');
       const jam = level.mode === 'decide' && level.decision && level.decision.st.kind === 'contraction';
@@ -142,6 +145,7 @@
   };
   window.game = game; // handy for debugging / automated playtests
 
+  if (SEHS.Sprites) SEHS.Sprites.load('sagittal');
   game.fx.reduce = settings.reduce;
   Audio.setMuted(!settings.sound);
   game.level = new SEHS.SagittalLevel(game);
@@ -151,12 +155,14 @@
     const box = $('levels');
     box.innerHTML = '';
     C.LEVELS.forEach((lv) => {
-      const card = document.createElement('button');
+      const card = document.createElement('div');
       card.className = `level ${lv.status}`;
-      const badge = lv.status === 'playable' ? 'PLAY' : lv.status === 'design' ? 'IN DESIGN' : 'PAUSED';
-      card.innerHTML = `<div class="badge">${badge}</div><div class="lv-plane">${lv.tag}</div><h3>${lv.title}</h3><p>${lv.blurb}</p>`;
-      if (lv.status === 'playable') card.addEventListener('click', () => { Audio.init(); openBriefing(); });
-      else card.disabled = true;
+      const badge = lv.status === 'playable' ? 'PLAYABLE' : lv.status === 'design' ? 'IN DESIGN' : 'PAUSED';
+      card.innerHTML = `<div class="badge">${badge}</div><div class="lv-plane">${lv.tag}</div><h3>${lv.title}</h3><p>${lv.blurb}</p>
+        <div class="lv-btns"><button class="ghost small" data-act="tut">📘 Tutorial</button>${lv.status === 'playable' ? '<button class="primary small" data-act="play">Play ▶</button>' : ''}</div>`;
+      card.querySelector('[data-act="tut"]').addEventListener('click', () => { Audio.init(); openTutorial(lv.id, false); });
+      const pb = card.querySelector('[data-act="play"]');
+      if (pb) pb.addEventListener('click', () => { Audio.init(); openTutorial(lv.id, true); });
       box.appendChild(card);
     });
     $('opt-sound').checked = settings.sound;
@@ -164,15 +170,21 @@
     $('opt-labels').checked = settings.labels;
   }
 
-  function openBriefing() {
+  // The tutorial / review section runs at the outset of every game.
+  const tutorial = new SEHS.Tutorial();
+  function openTutorial(levelId, preplay) {
     ui.hide('menu');
-    ui.show('briefing');
     game.state = 'briefing';
+    tutorial.show(levelId, {
+      preplay,
+      onStart: () => startLevel(),
+      onClose: () => { ui.show('menu'); game.state = 'menu'; },
+    });
   }
 
   function startLevel() {
     Audio.init();
-    ui.hide('briefing'); ui.hide('fail'); ui.hide('win'); ui.hide('menu');
+    ui.hide('tutorial'); ui.hide('fail'); ui.hide('win'); ui.hide('menu');
     game.level = new SEHS.SagittalLevel(game);
     ui.show('hud');
     game.state = 'play';
@@ -180,7 +192,7 @@
   }
 
   function toMenu() {
-    ['fail', 'win', 'pause', 'hud', 'decision', 'toast', 'briefing'].forEach((id) => ui.hide(id));
+    ['fail', 'win', 'pause', 'hud', 'decision', 'toast', 'tutorial'].forEach((id) => ui.hide(id));
     game.level = new SEHS.SagittalLevel(game);
     game.level.setAttract(true);
     game.state = 'menu';
@@ -195,8 +207,11 @@
   }
 
   // buttons
-  $('btn-start').addEventListener('click', startLevel);
-  $('btn-back').addEventListener('click', toMenu);
+  $('btn-pause-tut').addEventListener('click', () => {
+    ui.hide('pause');
+    game.state = 'briefing';
+    tutorial.show('sagittal', { preplay: false, onClose: () => { game.state = 'play'; ui.show('pause'); } });
+  });
   $('btn-retry').addEventListener('click', () => { ui.hide('fail'); game.level.reboot(); game.state = 'play'; });
   $('btn-fail-menu').addEventListener('click', toMenu);
   $('btn-again').addEventListener('click', startLevel);
@@ -213,11 +228,11 @@
       const n = parseInt(e.key, 10);
       if (n >= 1 && n <= 4) { Audio.select(); game.level.choose(n - 1); e.preventDefault(); return; }
     }
+    if (game.state === 'briefing') return; // tutorial has focus
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') togglePause();
     if (e.key === 'l' || e.key === 'L') { settings.labels = !settings.labels; $('opt-labels').checked = settings.labels; saveSettings(); }
     if (e.key === 'm' || e.key === 'M') { settings.sound = !settings.sound; $('opt-sound').checked = settings.sound; Audio.setMuted(!settings.sound); saveSettings(); }
-    if (e.key === 'Enter' && game.state === 'briefing') startLevel();
-    if (e.key === 'Enter' && game.state === 'menu') { Audio.init(); openBriefing(); }
+    if (e.key === 'Enter' && game.state === 'menu') { Audio.init(); openTutorial('sagittal', true); }
     if ((e.key === 'r' || e.key === 'R') && !$('fail').classList.contains('hidden')) $('btn-retry').click();
   });
 
@@ -229,7 +244,7 @@
     last = now;
     if (dt > 1 / 20) dt = 1 / 20;
     const lv = game.level;
-    if (!game.paused && game.state !== 'briefing') lv.update(dt);
+    if (!game.paused && !(game.state === 'briefing' && lv.mode !== 'attract')) lv.update(dt);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     lv.draw(ctx, { labels: settings.labels });
     if (game.state === 'play') {

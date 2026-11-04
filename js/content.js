@@ -45,12 +45,33 @@
       axisAlt: 'also called the vertical axis',
       divides: 'upper and lower parts',
       camera: 'Top-down view: the screen IS the transverse plane. The longitudinal axis points straight out of the screen.',
-      movements: ['Medial rotation', 'Lateral rotation', 'Pronation', 'Supination', 'Horizontal abduction', 'Horizontal adduction'],
+      movements: ['Medial rotation', 'Lateral rotation', 'Rotation', 'Pronation', 'Supination', 'Horizontal abduction', 'Horizontal adduction'],
     },
   };
 
   const MOVEMENT_PLANE = {};
   Object.values(PLANES).forEach((pl) => pl.movements.forEach((m) => (MOVEMENT_PLANE[m] = pl.id)));
+
+  // ---------------------------------------------------------------
+  // Axis names. Textbooks use different names for the same axis, so the
+  // game ROTATES through them at a regular interval (teacher request).
+  // NOTE: "transverse axis" (= frontal axis) is NOT the transverse plane.
+  // ---------------------------------------------------------------
+  const AXIS_NAMES = {
+    sagittal: ['frontal axis', 'transverse axis', 'mediolateral axis'],
+    frontal: ['sagittal axis', 'anteroposterior axis'],
+    transverse: ['longitudinal axis', 'vertical axis'],
+  };
+  const AXIS_INTERVAL_MS = 8000;
+  function axisName(planeId, idx) {
+    const a = AXIS_NAMES[planeId] || [''];
+    const i = idx == null ? Math.floor(Date.now() / AXIS_INTERVAL_MS) : idx;
+    return a[i % a.length];
+  }
+  function axisAllNames(planeId) {
+    const a = AXIS_NAMES[planeId] || [''];
+    return a.join(' / ');
+  }
 
   const MOVEMENT_DEFS = {
     Flexion: 'decreases the angle between two bones at a joint',
@@ -73,16 +94,52 @@
     Supination: 'rotates the forearm so the palm faces up/forward',
     'Horizontal abduction': 'moves a raised arm backward, away from the midline, in a horizontal path',
     'Horizontal adduction': 'moves a raised arm forward, toward the midline, in a horizontal path',
+    Rotation: 'turns the trunk or head around its long (vertical) axis',
+  };
+
+  const MOVEMENT_EXAMPLES = {
+    Flexion: 'Bending the elbow in a biceps curl; bending the knees to crouch',
+    Extension: 'Straightening the hips and knees to jump',
+    Hyperextension: 'Leaning the trunk backward past upright',
+    Dorsiflexion: 'Pulling the toes up toward the shin (walking on your heels)',
+    Plantarflexion: 'Pointing the toes; rising onto tiptoes',
+    Abduction: 'Raising the arms out to the sides in a jumping jack',
+    Adduction: 'Bringing the arms back down to the sides',
+    'Lateral flexion': 'Bending the trunk sideways in a side bend',
+    Elevation: 'Shrugging the shoulders up',
+    Depression: 'Pulling the shoulders back down',
+    Inversion: 'Rolling the sole of the foot inward',
+    Eversion: 'Turning the sole of the foot outward',
+    'Radial deviation': 'Tilting the hand toward the thumb side',
+    'Ulnar deviation': 'Tilting the hand toward the little-finger side',
+    'Medial rotation': 'Turning the arm inward, as in arm wrestling',
+    'Lateral rotation': 'Turning the arm outward when cocking the arm to throw',
+    Rotation: 'Turning the trunk during a golf swing',
+    Pronation: 'Turning the palm to face down when dribbling a basketball',
+    Supination: 'Turning the palm to face up, as if carrying a bowl of soup',
+    'Horizontal abduction': 'Arms held out in front swing out to the sides (reverse fly)',
+    'Horizontal adduction': 'Arms held out to the sides swing in across the chest (chest fly)',
   };
 
   // ---------------------------------------------------------------
   // Contraction types (colour is also used by the renderer + HUD)
   // ---------------------------------------------------------------
-  const CONTRACTIONS = {
-    concentric: { id: 'c', name: 'Concentric', letter: 'C', color: '#ff6a3d', def: 'The muscle SHORTENS while producing force (muscle force > resistance).' },
-    eccentric: { id: 'e', name: 'Eccentric', letter: 'E', color: '#4ea8ff', def: 'The muscle LENGTHENS while producing force, braking or controlling a movement (muscle force < resistance).' },
-    isometric: { id: 'i', name: 'Isometric', letter: 'I', color: '#ffc53d', def: 'The muscle produces force WITHOUT changing length, so the joint does not move (muscle force = resistance).' },
+  // Isotonic = the muscle changes length (joint moves): concentric + eccentric.
+  // Isometric = no change in length (joint still).
+  const ISOTONIC = {
+    name: 'Isotonic',
+    def: 'The muscle CHANGES LENGTH while it produces force, so the joint moves. There are two kinds: concentric and eccentric.',
+    example: 'Lifting and lowering a dumbbell',
   };
+  const CONTRACTIONS = {
+    concentric: { id: 'c', name: 'Concentric', letter: 'C', color: '#ff6a3d', family: 'isotonic', def: 'The muscle SHORTENS while producing force (muscle force > resistance).', example: 'Lifting the dumbbell in a biceps curl: the biceps shortens.' },
+    eccentric: { id: 'e', name: 'Eccentric', letter: 'E', color: '#4ea8ff', family: 'isotonic', def: 'The muscle LENGTHENS while producing force, braking or controlling a movement (muscle force < resistance).', example: 'Lowering the dumbbell slowly; the quadriceps when landing from a jump.' },
+    isometric: { id: 'i', name: 'Isometric', letter: 'I', color: '#ffc53d', family: 'isometric', def: 'The muscle produces force WITHOUT changing length, so the joint does not move (muscle force = resistance).', example: 'Holding the dumbbell still at 90°; holding a plank.' },
+  };
+  function contractionLabel(key) {
+    const c = CONTRACTIONS[key];
+    return c.family === 'isotonic' ? `${c.name} (isotonic)` : `${c.name} (static)`;
+  }
   const CONTRACTION_BY_ID = { c: CONTRACTIONS.concentric, e: CONTRACTIONS.eccentric, i: CONTRACTIONS.isometric };
 
   // ---------------------------------------------------------------
@@ -90,22 +147,42 @@
   // Attachment geometry lives in android.js and is keyed by these ids.
   // ---------------------------------------------------------------
   const MUSCLES = {
-    gluteus_maximus: { name: 'Gluteus maximus', region: 'lower limb', action: 'Hip extension (and lateral rotation)' },
-    iliopsoas: { name: 'Iliopsoas', region: 'lower limb', action: 'Hip flexion' },
-    quadriceps: { name: 'Quadriceps femoris', region: 'lower limb', action: 'Knee extension (rectus femoris also flexes the hip)' },
-    hamstrings: { name: 'Hamstrings', region: 'lower limb', action: 'Knee flexion and hip extension' },
-    gastrocnemius: { name: 'Gastrocnemius', region: 'lower limb', action: 'Ankle plantarflexion (assists knee flexion)' },
-    soleus: { name: 'Soleus', region: 'lower limb', action: 'Ankle plantarflexion' },
-    tibialis_anterior: { name: 'Tibialis anterior', region: 'lower limb', action: 'Ankle dorsiflexion (and inversion)' },
-    deltoid_anterior: { name: 'Deltoid (anterior)', region: 'upper limb', action: 'Shoulder flexion' },
-    deltoid_posterior: { name: 'Deltoid (posterior)', region: 'upper limb', action: 'Shoulder extension' },
-    pectoralis_major: { name: 'Pectoralis major', region: 'upper limb', action: 'Shoulder flexion (clavicular head) and horizontal adduction' },
-    latissimus_dorsi: { name: 'Latissimus dorsi', region: 'upper limb', action: 'Shoulder extension and adduction' },
-    biceps_brachii: { name: 'Biceps brachii', region: 'upper limb', action: 'Elbow flexion (and forearm supination)' },
-    brachialis: { name: 'Brachialis', region: 'upper limb', action: 'Elbow flexion' },
-    brachioradialis: { name: 'Brachioradialis', region: 'upper limb', action: 'Elbow flexion' },
-    triceps_brachii: { name: 'Triceps brachii', region: 'upper limb', action: 'Elbow extension' },
+    // ---- on the android rig (phase 1, sagittal level) ----
+    gluteus_maximus: { name: 'Gluteus maximus', region: 'lower limb', where: 'Buttock (back of the hip)', action: 'Hip extension (and lateral rotation)' },
+    iliopsoas: { name: 'Iliopsoas', region: 'lower limb', where: 'Deep, front of the hip', action: 'Hip flexion' },
+    quadriceps: { name: 'Quadriceps femoris', region: 'lower limb', where: 'Front of the thigh', action: 'Knee extension (rectus femoris also flexes the hip)' },
+    hamstrings: { name: 'Hamstrings', region: 'lower limb', where: 'Back of the thigh', action: 'Knee flexion and hip extension' },
+    gastrocnemius: { name: 'Gastrocnemius', region: 'lower limb', where: 'Back of the calf (crosses the knee)', action: 'Ankle plantarflexion (assists knee flexion)' },
+    soleus: { name: 'Soleus', region: 'lower limb', where: 'Calf, deep to the gastrocnemius', action: 'Ankle plantarflexion' },
+    tibialis_anterior: { name: 'Tibialis anterior', region: 'lower limb', where: 'Front of the shin', action: 'Ankle dorsiflexion (and inversion)' },
+    deltoid_anterior: { name: 'Deltoid (anterior)', region: 'upper limb', where: 'Front of the shoulder cap', action: 'Shoulder flexion' },
+    deltoid_posterior: { name: 'Deltoid (posterior)', region: 'upper limb', where: 'Back of the shoulder cap', action: 'Shoulder extension (and horizontal abduction)' },
+    pectoralis_major: { name: 'Pectoralis major', region: 'upper limb', where: 'Chest', action: 'Shoulder flexion (clavicular head), horizontal adduction, medial rotation' },
+    latissimus_dorsi: { name: 'Latissimus dorsi', region: 'upper limb', where: 'Side and back of the trunk', action: 'Shoulder extension, adduction and medial rotation' },
+    biceps_brachii: { name: 'Biceps brachii', region: 'upper limb', where: 'Front of the upper arm', action: 'Elbow flexion (and forearm supination)' },
+    brachialis: { name: 'Brachialis', region: 'upper limb', where: 'Front of the upper arm, deep to the biceps', action: 'Elbow flexion' },
+    brachioradialis: { name: 'Brachioradialis', region: 'upper limb', where: 'Thumb side of the forearm', action: 'Elbow flexion' },
+    triceps_brachii: { name: 'Triceps brachii', region: 'upper limb', where: 'Back of the upper arm', action: 'Elbow extension' },
+    // ---- tutorial / future levels (not yet on the rig) ----
+    deltoid_middle: { name: 'Deltoid (middle)', region: 'upper limb', where: 'Side of the shoulder cap', action: 'Shoulder abduction' },
+    supraspinatus: { name: 'Supraspinatus', region: 'upper limb', where: 'Top of the shoulder blade (rotator cuff)', action: 'Starts shoulder abduction' },
+    infraspinatus: { name: 'Infraspinatus', region: 'upper limb', where: 'Back of the shoulder blade (rotator cuff)', action: 'Shoulder lateral rotation' },
+    subscapularis: { name: 'Subscapularis', region: 'upper limb', where: 'Front of the shoulder blade (rotator cuff)', action: 'Shoulder medial rotation' },
+    pronator_teres: { name: 'Pronator teres', region: 'upper limb', where: 'Front of the forearm, near the elbow', action: 'Forearm pronation' },
+    supinator: { name: 'Supinator', region: 'upper limb', where: 'Back of the forearm, near the elbow', action: 'Forearm supination' },
+    gluteus_medius: { name: 'Gluteus medius', region: 'lower limb', where: 'Side of the hip', action: 'Hip abduction' },
+    hip_adductors: { name: 'Hip adductors', region: 'lower limb', where: 'Inner thigh', action: 'Hip adduction' },
+    fibularis_longus: { name: 'Fibularis (peroneus) longus', region: 'lower limb', where: 'Outer side of the lower leg', action: 'Foot eversion (and plantarflexion)' },
+    obliques: { name: 'External & internal obliques', region: 'trunk', where: 'Sides of the abdomen', action: 'Trunk lateral flexion and rotation' },
   };
+
+  // Muscles featured in each level's tutorial
+  const LEVEL_MUSCLES = {
+    sagittal: ['gluteus_maximus', 'iliopsoas', 'quadriceps', 'hamstrings', 'gastrocnemius', 'soleus', 'tibialis_anterior', 'deltoid_anterior', 'deltoid_posterior', 'pectoralis_major', 'latissimus_dorsi', 'biceps_brachii', 'brachialis', 'brachioradialis', 'triceps_brachii'],
+    frontal: ['deltoid_middle', 'supraspinatus', 'latissimus_dorsi', 'pectoralis_major', 'gluteus_medius', 'hip_adductors', 'obliques', 'tibialis_anterior', 'fibularis_longus', 'pronator_teres', 'supinator', 'biceps_brachii'],
+    transverse: ['pectoralis_major', 'latissimus_dorsi', 'deltoid_posterior', 'subscapularis', 'infraspinatus', 'obliques', 'pronator_teres', 'supinator', 'biceps_brachii'],
+  };
+
 
   // ---------------------------------------------------------------
   // SAGITTAL LEVEL: obstacle question bank
@@ -120,6 +197,7 @@
   const OBSTACLES = {
     gap: {
       title: 'FLOOR GAP',
+      tier: 1,
       stages: [
         {
           kind: 'movement',
@@ -151,6 +229,7 @@
 
     laser: {
       title: 'LASER GRID',
+      tier: 2,
       stages: [
         {
           kind: 'movement',
@@ -162,7 +241,8 @@
           distractors: LEG_DISTRACTORS,
           success: {
             headline: 'FLEXION',
-            detail: 'Hip and knee flexion lower the body. Gravity does the bending, so the quadriceps and gluteus maximus control the drop ECCENTRICALLY.',
+            detail: 'The hips and knees bend (flex), so the joint angles get smaller and the body drops low enough to slide under the beams.',
+            deeper: 'Going deeper: gravity pulls the body down, so the quadriceps and gluteus maximus actually LENGTHEN under tension to control the drop (an eccentric contraction).',
             agonists: ['quadriceps', 'gluteus_maximus'],
             contraction: 'eccentric',
           },
@@ -182,6 +262,7 @@
 
     crate: {
       title: 'BLOCKED CONVEYOR',
+      tier: 1,
       stages: [
         {
           kind: 'movement',
@@ -213,6 +294,7 @@
 
     drop: {
       title: 'HIGH LEDGE',
+      tier: 3,
       stages: [
         {
           kind: 'contraction',
@@ -248,6 +330,7 @@
 
     zipline: {
       title: 'TROLLEY RAIL',
+      tier: 2,
       stages: [
         {
           kind: 'movement',
@@ -317,7 +400,7 @@
     const def = MOVEMENT_DEFS[choice] ? ` (it ${MOVEMENT_DEFS[choice]})` : '';
     return {
       headline: 'SYSTEM FAILURE: PLANE VIOLATION',
-      explain: `${choice}${def} is a ${pl.name.toUpperCase()} movement, about the ${pl.axis}. The escape corridor locks the android to the SAGITTAL plane, where the ${limb} can only flex or extend about the frontal axis. Forcing a ${pl.name.toLowerCase()} movement here overloaded the servos.`,
+      explain: `${choice}${def} is a ${pl.name.toUpperCase()} movement, about the ${axisName(pid)}. The escape corridor locks the android to the SAGITTAL plane, where the ${limb} can only flex or extend about the ${axisName('sagittal')}. Forcing a ${pl.name.toLowerCase()} movement here overloaded the servos.`,
     };
   }
 
@@ -328,7 +411,7 @@
       plane: 'frontal',
       title: 'Precision Lab',
       tag: 'FRONTAL PLANE · SAGITTAL AXIS',
-      blurb: 'Before the escape. Climb the test wall with individual limb control: abduct or adduct to reach, then orient the palm to press. The scientists shock you for every error.',
+      blurb: 'Before the escape. Climb the test wall with individual limb control: abduct or adduct to reach, then turn the palm to press. Every error earns a shock; too many and the android shuts down.',
       status: 'design',
     },
     {
@@ -349,15 +432,81 @@
     },
   ];
 
+  // ---------------------------------------------------------------
+  // TUTORIALS: shown at the start of every game (and from the menu).
+  // Pages: planes & axes -> movements -> contraction types -> muscles -> how to play
+  // ---------------------------------------------------------------
+  const TUTORIALS = {
+    sagittal: {
+      camera: 'In this game your screen IS the sagittal plane: you see the android from the side. The axis it turns about points straight out of the screen through each joint (shown as ⊙).',
+      demos: ['Flexion', 'Extension', 'Hyperextension', 'Dorsiflexion', 'Plantarflexion'],
+      play: [
+        'The android runs on its own. Time slows almost to a stop as each hazard approaches.',
+        'Choose the correct MOVEMENT (e.g. flexion or extension) or CONTRACTION (concentric, eccentric or isometric) before the timer runs out. Click, or press 1–4.',
+        'Wrong, but in the sagittal plane: the muscles do exactly what you chose, with the result you would expect.',
+        'A movement from another plane (abduction, rotation and so on): the android malfunctions and the screen cracks.',
+        'After a failure you reboot at the same hazard. Hazards start simple and get harder.',
+        'Watch the other androids on the back catwalk. Not all of them make it.',
+      ],
+    },
+    frontal: {
+      camera: 'In this game your screen IS the frontal plane: you see the android from behind. The axis it turns about points straight out of the screen (shown as ⊙).',
+      demos: ['Abduction', 'Adduction', 'Lateral flexion', 'Elevation', 'Depression', 'Inversion', 'Eversion', 'Radial deviation', 'Ulnar deviation'],
+      crossPlane: {
+        title: 'The palm step uses a second plane',
+        text: 'To press each button you turn the palm with PRONATION or SUPINATION. These are TRANSVERSE-plane movements (about the longitudinal/vertical axis), not frontal ones. Real tasks often combine planes. In this level the palm step is never counted as a plane error.',
+        demos: ['Pronation', 'Supination'],
+      },
+      play: [
+        'Before the escape: the android is forced to climb a test wall while scientists watch from behind the glass.',
+        'Select one limb at a time, then choose ABDUCTION or ADDUCTION to reach the next hold or button.',
+        'Turn the palm (pronation or supination) to press each button.',
+        'Wrong answers do not restart the level. Instead the scientists SHOCK the android and it loses one battery cell.',
+        'If the battery runs out, the android malfunctions and shuts down. That ends the test.',
+        'At the end you get a PRECISION REPORT showing what you got right and what to review.',
+      ],
+    },
+    transverse: {
+      camera: 'In this game your screen IS the transverse plane: you look down on the android from above. The axis it turns about points straight out of the screen (shown as ⊙).',
+      demos: ['Rotation', 'Medial rotation', 'Lateral rotation', 'Horizontal abduction', 'Horizontal adduction', 'Pronation', 'Supination'],
+      play: [
+        'After the escape, the free android must defend itself from capture drones using rotations and horizontal movements.',
+        'This level is PAUSED in development. Use this tutorial as review only.',
+      ],
+    },
+  };
+
+  // Self-check items for the printable review sheet (answer key included)
+  const REVIEW_CHECKS = [
+    { q: 'Which plane divides the body into left and right sides, and which axis does movement in it rotate about?', a: 'Sagittal plane; frontal axis (also called transverse or mediolateral axis)' },
+    { q: 'Name two movements that happen in the frontal plane.', a: 'Any two of: abduction, adduction, lateral flexion, elevation, depression, inversion, eversion' },
+    { q: 'Does flexion increase or decrease the angle at a joint?', a: 'Decrease (extension increases it)' },
+    { q: 'Jumping: what movement happens at the hips and knees as you push off?', a: 'Extension (gluteus maximus and quadriceps, concentric)' },
+    { q: 'Landing from a jump: what type of contraction do the quadriceps perform?', a: 'Eccentric: they lengthen under tension to control knee flexion' },
+    { q: 'Holding a dumbbell still with the elbow at 90°: what type of contraction is this?', a: 'Isometric: force with no change in muscle length' },
+    { q: 'Which two contraction types are kinds of ISOTONIC contraction?', a: 'Concentric and eccentric' },
+    { q: 'In which plane do pronation and supination of the forearm occur, and about which axis?', a: 'Transverse plane; longitudinal (vertical) axis' },
+  ];
+
   SEHS.content = {
     PLANES,
     MOVEMENT_PLANE,
     MOVEMENT_DEFS,
+    MOVEMENT_EXAMPLES,
+    AXIS_NAMES,
+    AXIS_INTERVAL_MS,
+    axisName,
+    axisAllNames,
+    ISOTONIC,
     CONTRACTIONS,
     CONTRACTION_BY_ID,
+    contractionLabel,
     MUSCLES,
+    LEVEL_MUSCLES,
     OBSTACLES,
     LEVELS,
+    TUTORIALS,
+    REVIEW_CHECKS,
     planeOf,
     planeFailText,
   };

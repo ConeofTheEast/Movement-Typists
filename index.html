@@ -27,6 +27,7 @@
           <span><i class="chip" style="--c:#4ea8ff">E</i>eccentric</span>
           <span><i class="chip" style="--c:#ffc53d">I</i>isometric</span>
         </div>
+        <div class="legend iso">C + E = isotonic (length changes) · I = static</div>
       </div>
     </div>
 
@@ -55,35 +56,25 @@
       </div>
     </div>
 
-    <!-- Briefing -->
-    <div id="briefing" class="screen hidden">
-      <div class="panel brief">
-        <div class="kicker">MISSION BRIEFING · FACTORY ESCAPE</div>
-        <h2>Your screen <em>is</em> the sagittal plane</h2>
-        <div class="brief-grid">
-          <div>
-            <h4>Plane &amp; axis</h4>
-            <p>The <b>sagittal plane</b> divides the body into left and right. You are looking at it side-on. Its axis, the <b>frontal axis</b> ⊙, pokes straight out of the screen through every joint.</p>
-            <p>Only <b>flexion</b> (joint angle decreases) and <b>extension</b> (joint angle increases) happen here. Abduction, adduction and rotation belong to other planes, and the corridor will reject them.</p>
-          </div>
-          <div>
-            <h4>Contractions</h4>
-            <p><span class="chip" style="--c:#ff6a3d">C</span><b>Concentric</b>: the muscle shortens under tension.</p>
-            <p><span class="chip" style="--c:#4ea8ff">E</span><b>Eccentric</b>: the muscle lengthens under tension (braking).</p>
-            <p><span class="chip" style="--c:#ffc53d">I</span><b>Isometric</b>: tension with no change in length.</p>
-            <p class="dim">Muscles swell and glow in these colours as the android moves.</p>
-          </div>
-          <div>
-            <h4>How to play</h4>
-            <p>Time slows as each hazard approaches. Choose with the mouse or keys <kbd>1</kbd>–<kbd>4</kbd> before the timer runs out.</p>
-            <p>Wrong answers make the muscles do exactly what you chose. Failure reboots you at the same hazard.</p>
-            <p class="dim"><kbd>P</kbd> pause · <kbd>L</kbd> muscle labels · <kbd>M</kbd> sound</p>
-          </div>
+    <!-- Tutorial / review section (shown at the start of every game) -->
+    <div id="tutorial" class="screen hidden">
+      <div class="tut">
+        <header>
+          <div><div class="kicker" id="tut-kicker"></div><h2 id="tut-title"></h2></div>
+          <button id="tut-close" class="ghost small" title="Close">✕</button>
+        </header>
+        <nav id="tut-nav"></nav>
+        <div class="tut-body">
+          <div id="tut-content"></div>
+          <div class="tut-demo"><canvas id="tut-canvas" width="520" height="440"></canvas><div id="tut-caption"></div></div>
         </div>
-        <div class="row">
-          <button id="btn-back" class="ghost">Back</button>
-          <button id="btn-start" class="primary">Begin escape ▶</button>
-        </div>
+        <footer>
+          <a id="tut-print" class="ghost small" href="review-sheet.html" target="_blank" rel="noopener">🖨 Printable review sheet</a>
+          <span class="spacer"></span>
+          <button id="tut-skip" class="ghost small">Skip to game</button>
+          <button id="tut-prev" class="ghost">◀ Back</button>
+          <button id="tut-next" class="primary">Next ▶</button>
+        </footer>
       </div>
     </div>
 
@@ -124,22 +115,28 @@
         <h2>Quick reference</h2>
         <table class="ref">
           <tr><th>Plane</th><th>Axis</th><th>Divides body into</th><th>Movements</th></tr>
-          <tr><td>Sagittal</td><td>Frontal</td><td>Left / right</td><td>Flexion, extension, dorsiflexion, plantarflexion</td></tr>
-          <tr><td>Frontal</td><td>Sagittal</td><td>Front / back</td><td>Abduction, adduction, lateral flexion, inversion, eversion</td></tr>
-          <tr><td>Transverse</td><td>Longitudinal</td><td>Upper / lower</td><td>Medial &amp; lateral rotation, pronation, supination, horizontal ab/adduction</td></tr>
+          <tr><td>Sagittal</td><td>Frontal / transverse / mediolateral</td><td>Left / right</td><td>Flexion, extension, dorsiflexion, plantarflexion</td></tr>
+          <tr><td>Frontal</td><td>Sagittal / anteroposterior</td><td>Front / back</td><td>Abduction, adduction, lateral flexion, inversion, eversion</td></tr>
+          <tr><td>Transverse</td><td>Longitudinal / vertical</td><td>Upper / lower</td><td>Medial &amp; lateral rotation, trunk rotation, pronation, supination, horizontal ab/adduction</td></tr>
         </table>
+        <p class="dim">Contractions: <b>isotonic</b> = length changes (<b>concentric</b> shortens, <b>eccentric</b> lengthens) · <b>isometric</b> = no change in length.</p>
         <div class="row">
           <button id="btn-pause-menu" class="ghost">Quit to menu</button>
+          <button id="btn-pause-tut" class="ghost">📘 Tutorial</button>
           <button id="btn-resume" class="primary">Resume (P)</button>
         </div>
       </div>
     </div>
   </div>
 
+  <script src="assets/sprites/manifest.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/diagrams.js"></script>
   <script src="js/android.js"></script>
   <script src="js/effects.js"></script>
   <script src="js/sagittal.js"></script>
+  <script src="js/tutorial.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

@@ -25,6 +25,8 @@
   const G = 1700;
   const CYCLE = 300; // world px per running cycle (two steps)
   const TAU = Math.PI * 2;
+  // back catwalk for the rival androids
+  const LANE_Y = GY - 96, LANE_P = 0.85, LANE_SCALE = 0.6, LANE_GAP_EVERY = 1150, LANE_GAP_W = 120;
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const ease = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -87,6 +89,10 @@
       this.game = game;
       this.fx = game.fx;
       this.android = new Android();
+      this.bgfx = new SEHS.FX();
+      this.rivals = [];
+      this.rivalT = 1.5;
+      this.floaters = [];
       this.time = 0;
       this.phase = 0;
       this.measure();
@@ -108,12 +114,19 @@
 
     // ---------------- course generation ----------------
     buildCourse() {
-      const seq = ['gap'];
-      const pool = ['laser', 'crate', 'drop', 'zipline', 'gap'];
-      while (seq.length < 10) {
-        const bag = pool.slice().sort(() => Math.random() - 0.5);
-        for (const t of bag) if (seq.length < 10 && seq[seq.length - 1] !== t) seq.push(t);
-      }
+      // Difficulty ramps by tier (content.js): simple joint actions first
+      // (tier 1: jump = extension, push = extension), then tier 2 (reach +
+      // isometric hold, slide), then tier 3 (eccentric landing), then a mix.
+      const tierOf = (t) => C.OBSTACLES[t].tier || 1;
+      const types = Object.keys(C.OBSTACLES);
+      const pick = (maxTier, avoid) => {
+        const opts = types.filter((t) => tierOf(t) <= maxTier && t !== avoid);
+        return opts[Math.floor(Math.random() * opts.length)];
+      };
+      const seq = ['gap', 'crate', 'gap', 'zipline', 'laser'];
+      seq.push(pick(2, 'laser'));
+      seq.push('drop');
+      while (seq.length < 10) seq.push(pick(3, seq[seq.length - 1]));
       this.obs = [];
       let x = 1500;
       seq.forEach((type, i) => {
@@ -201,6 +214,7 @@
       this.pl = { pose: runPose(this.phase), x: PX, y: GY - 150, mode: 'ground', vy: 0, visible: true, status: 'ok', onLand: null, onFall: null };
       this.android.reset();
       this.fx.reset();
+      if (this.bgfx) { this.bgfx.reset(); this.rivals = []; this.rivalT = 2; this.floaters = []; }
     }
 
     setAttract(on) {
@@ -452,6 +466,156 @@
         }
       }
       this.fx.update(dt);
+      this.updateRivals(dt);
+    }
+
+    // ======================================================================
+    // RIVAL ANDROIDS: other escapees on a back catwalk. They overtake you,
+    // jump the catwalk gaps, and sometimes fail (fall + explode, or
+    // malfunction). They live in the same slowed time as the player.
+    // ======================================================================
+    worldTimeScale() {
+      if (this.mode === 'decide') return 0.02;
+      if (this.mode === 'run' || this.mode === 'ride') return this.ts;
+      if (this.mode === 'failed') return 0.35;
+      return 1;
+    }
+    laneSX(lx) { return PX + (lx - this.scrollX * LANE_P); }
+    laneGapAt(lx) {
+      const k = Math.floor(lx / LANE_GAP_EVERY);
+      const gx = k * LANE_GAP_EVERY + 500 + hash(k + 99) * 400;
+      return lx >= gx && lx <= gx + LANE_GAP_W ? gx : null;
+    }
+    nextLaneGap(lx) {
+      for (let k = Math.floor(lx / LANE_GAP_EVERY); k < Math.floor(lx / LANE_GAP_EVERY) + 2; k++) {
+        const gx = k * LANE_GAP_EVERY + 500 + hash(k + 99) * 400;
+        if (gx > lx) return gx;
+      }
+      return Infinity;
+    }
+
+    spawnRival() {
+      const fromLeft = Math.random() < 0.75;
+      const base = this.speed * LANE_P;
+      const lx = this.scrollX * LANE_P + (fromLeft ? -PX - 120 : W - PX + 120);
+      if (this.laneGapAt(lx) != null) return;
+      const visors = ['#ffb347', '#7dff9a', '#ff7ad9', '#b48cff', '#ffe066'];
+      this.rivals.push({
+        a: new Android(), lx, v: fromLeft ? base + rand(80, 190) : base - rand(70, 130),
+        ph: Math.random() * TAU, mode: 'run', t: 0, y: 0, vy: 0, rot: 0,
+        visor: visors[Math.floor(Math.random() * visors.length)],
+        unit: 'UNIT-' + String(Math.floor(rand(2, 98))).padStart(2, '0'),
+        skill: rand(0.55, 0.9), status: 'ok', pose: runPose(0),
+      });
+    }
+
+    updateRivals(dt) {
+      const wdt = dt * this.worldTimeScale();
+      this.bgfx.update(wdt);
+      for (let i = this.floaters.length - 1; i >= 0; i--) { const f = this.floaters[i]; f.t += dt; f.y -= 18 * dt; if (f.t > 2.2) this.floaters.splice(i, 1); }
+      if (this.mode !== 'decide' && this.mode !== 'won') {
+        this.rivalT -= wdt;
+        if (this.rivalT <= 0 && this.rivals.length < 3) { this.spawnRival(); this.rivalT = rand(4, 9); }
+      }
+      const k = LANE_SCALE;
+      for (let i = this.rivals.length - 1; i >= 0; i--) {
+        const r = this.rivals[i];
+        r.t += wdt;
+        if (r.mode === 'run') {
+          r.lx += r.v * wdt;
+          r.ph += ((r.v * wdt) / (CYCLE * k)) * TAU;
+          r.pose = runPose(r.ph);
+          r.y = 0;
+          const g = this.nextLaneGap(r.lx);
+          if (g - r.lx < 40) {
+            if (Math.random() < r.skill) { r.mode = 'jump'; r.t = 0; r.T = (LANE_GAP_W + 90) / r.v; }
+            else { r.mode = Math.random() < 0.6 ? 'tuck' : 'glitch'; r.t = 0; r.status = 'warn'; }
+          } else if (Math.random() < 0.0006 * wdt * 60) { r.mode = 'glitch'; r.t = 0; r.status = 'warn'; }
+        } else if (r.mode === 'jump') {
+          r.lx += r.v * wdt;
+          const s = Math.min(1, r.t / r.T);
+          r.y = -95 * 4 * s * (1 - s);
+          r.pose = s < 0.15 ? lerpPose(POSES.crouch, POSES.extend, s / 0.15) : s < 0.6 ? lerpPose(POSES.extend, POSES.tuck, (s - 0.15) / 0.45) : lerpPose(POSES.tuck, POSES.landPrep, (s - 0.6) / 0.4);
+          r.pose.mus = s < 0.15 ? { quadriceps: ['c', 1], gluteus_maximus: ['c', 1], gastrocnemius: ['c', 1] } : null;
+          if (s >= 1) { r.mode = 'run'; r.y = 0; }
+        } else if (r.mode === 'tuck') {
+          r.lx += r.v * 0.35 * wdt;
+          r.pose = clonePose(POSES.superTuck);
+          r.pose.mus = { iliopsoas: ['c', 1], hamstrings: ['c', 1] };
+          r.rot += 380 * wdt;
+          r.pose.rot = r.rot;
+          if (r.t > 0.35) { r.vy += G * wdt; r.y += r.vy * wdt; }
+          if (r.y > 260) { this.rivalBoom(r, true); this.rivals.splice(i, 1); continue; }
+        } else if (r.mode === 'glitch') {
+          r.status = 'fail';
+          const kk = Math.min(1, r.t / 0.9);
+          r.pose = jitterPose(lerpPose(r.pose, POSES.slump, 0.08), 10 * (1 - kk));
+          if (Math.random() < 0.3) { const x = this.laneSX(r.lx), y = LANE_Y - 70 * k; this.bgfx.sparks(x, y, 3, { vmax: 220 }); }
+          if (r.t > 1.1 && !r.dead) { r.dead = true; this.rivalBoom(r, false); }
+        }
+        const sx = this.laneSX(r.lx);
+        if (sx < -400 || sx > W + 400) { this.rivals.splice(i, 1); continue; }
+        r.a.update(r.pose, wdt);
+      }
+    }
+
+    rivalBoom(r, fell) {
+      const x = this.laneSX(r.lx);
+      const y = fell ? LANE_Y + 140 : LANE_Y - 40;
+      this.bgfx.explosion(x, y, 0.55, { fromBelow: fell });
+      this.bgfx.shake = 0; this.bgfx.flash = 0;
+      this.floaters.push({ x, y: LANE_Y - 150 * LANE_SCALE, t: 0, text: r.unit + ' LOST' });
+      if (Math.random() < 0.5) Audio.thud();
+    }
+
+    drawRivalLane(ctx) {
+      const k = LANE_SCALE;
+      // catwalk with gaps
+      const step = 8;
+      ctx.fillStyle = '#1d2a37';
+      ctx.strokeStyle = '#3e5266';
+      ctx.lineWidth = 2;
+      let runA = null;
+      const flush = (a, b) => {
+        ctx.fillStyle = '#1d2a37'; ctx.fillRect(a, LANE_Y, b - a, 12);
+        ctx.fillStyle = '#2f4155'; ctx.fillRect(a, LANE_Y, b - a, 3);
+        ctx.strokeStyle = '#2a3a4b';
+        ctx.beginPath(); ctx.moveTo(a, LANE_Y - 34); ctx.lineTo(b, LANE_Y - 34); ctx.stroke();
+        for (let x = a - (a % 40); x < b; x += 40) { if (x < a) continue; ctx.beginPath(); ctx.moveTo(x, LANE_Y); ctx.lineTo(x, LANE_Y - 34); ctx.stroke(); }
+      };
+      for (let x = -20; x <= W + 20; x += step) {
+        const lx = this.scrollX * LANE_P + (x - PX);
+        const gap = this.laneGapAt(lx) != null;
+        if (!gap && runA == null) runA = x;
+        if (gap && runA != null) { flush(runA, x); runA = null; }
+      }
+      if (runA != null) flush(runA, W + 20);
+      // rivals (small, behind the main floor)
+      for (const r of this.rivals) {
+        const sx = this.laneSX(r.lx);
+        ctx.save();
+        ctx.translate(sx, LANE_Y + r.y);
+        ctx.scale(k, k);
+        const low = Android.lowestRel(r.pose);
+        r.a.draw(ctx, r.pose, 0, -low, { status: r.status, visor: r.visor, reduce: true, skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
+        ctx.restore();
+      }
+      this.bgfx.drawWorld(ctx);
+      // depth haze over the whole back lane
+      const hz = ctx.createLinearGradient(0, LANE_Y - 200, 0, LANE_Y + 40);
+      hz.addColorStop(0, 'rgba(12,20,30,0)');
+      hz.addColorStop(0.4, 'rgba(12,20,30,0.38)');
+      hz.addColorStop(1, 'rgba(12,20,30,0.5)');
+      ctx.fillStyle = hz;
+      ctx.fillRect(-200, LANE_Y - 200, W + 400, 240);
+      ctx.save();
+      ctx.font = '700 12px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      for (const f of this.floaters) {
+        ctx.fillStyle = `rgba(255,90,90,${Math.max(0, 1 - f.t / 2.2)})`;
+        ctx.fillText(f.text, f.x, f.y);
+      }
+      ctx.restore();
     }
 
     win() {
@@ -1005,6 +1169,7 @@
       ctx.translate(-PX, -fy);
 
       this.drawBackground(ctx);
+      this.drawRivalLane(ctx);
       if (this.mode !== 'attract') this.drawPits(ctx);
       this.drawFloor(ctx);
       if (this.mode !== 'attract') { this.drawObstaclesBack(ctx); this.drawExit(ctx); }
@@ -1031,6 +1196,7 @@
           labels: opts.labels ? 'all' : null,
           neutral: contractionQ,
           reduce: fx.reduce,
+          skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null,
         });
       }
       if (this.mode !== 'attract') this.drawObstaclesFront(ctx);

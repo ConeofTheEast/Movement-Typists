@@ -27,10 +27,10 @@ fs.mkdirSync(OUT, { recursive: true });
   await pg.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
   await pg.waitForTimeout(800);
   await pg.screenshot({ path: OUT + '/00-menu.png' });
-  await pg.click('.level.playable');
-  await pg.waitForTimeout(200);
-  await pg.screenshot({ path: OUT + '/01-brief.png' });
-  await pg.click('#btn-start');
+  await pg.click('.level.playable [data-act="play"]');
+  await pg.waitForTimeout(400);
+  await pg.screenshot({ path: OUT + '/01-tutorial.png' });
+  await pg.click('#tut-skip');
   const types = (process.argv[3] || 'gap').split(',');
   const choices = (process.argv[4] || 'correct').split(',');
   await pg.evaluate(({ types }) => {

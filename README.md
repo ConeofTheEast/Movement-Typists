@@ -8,6 +8,8 @@ An android with anatomically placed human muscles has to escape a factory. Its m
 
 Open `index.html` in a browser. There is no install, no build step and no internet requirement.
 
+Every game starts with a **tutorial and review section**: planes and axes, movement types with animated demos, the contraction types (isotonic: concentric and eccentric; isometric) and the key muscles. You can also open a **printable review sheet** (`review-sheet.html`) with self-check questions and an answer key.
+
 To host it for a class, enable **GitHub Pages** on this repo and share the link.
 
 | Level | Plane (= the screen) | Status |
@@ -33,7 +35,11 @@ Controls:
 | `js/content.js` | All curriculum data and wording: planes, axes, muscles, questions, feedback | sehs-content-specialist |
 | `js/android.js` | Muscled android rig, kinematics and muscle rendering | anatomy-animator |
 | `js/effects.js` | Particles, screen crack, glitch, synthesised audio | vfx-audio |
-| `js/sagittal.js` | Factory Escape level: hazards, outcome animations, rendering | game-engineer + level-designer |
+| `js/sagittal.js` | Factory Escape level: hazards, outcome animations, rival androids, rendering | game-engineer + level-designer |
+| `js/tutorial.js`, `js/diagrams.js` | Tutorial and review section with animated demos; plane diagrams | game-engineer + sehs-content-specialist |
+| `review-sheet.html` | Printable review sheet with answer key, generated from `content.js` | sehs-content-specialist |
+| `js/sprites.js`, `assets/sprites/` | Optional sprite skin for the android (disabled until images are added) | art-director |
+| `docs/SPRITE_PROMPTS.md` | Prompts for generating the android's sprites with an image AI | art-director |
 | `js/main.js`, `index.html`, `css/` | Menu, HUD, decision UI, loop | game-engineer |
 | `tools/playtest.js` | Automated branch playtest using Playwright | playtest-qa |
 | `docs/GAME_DESIGN.md` | Game design, hazard table, Frontal level spec | level-designer |

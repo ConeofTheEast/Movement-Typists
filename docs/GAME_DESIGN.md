@@ -25,6 +25,18 @@ The three levels tell one story, and each one is locked to a single plane of mov
 
 ---
 
+## 1b. Tutorial and review section (every game)
+
+Each game is a **teaching** game, not only a review game. Pressing **Play** opens the level's tutorial first; the student can skip it. Every level card also has its own **Tutorial** button, and the pause menu links to it. The tutorial has five pages, all generated from `content.js`:
+
+1. **Planes & axes:** three plane diagrams, what each plane divides the body into, and **every name for each axis**. A warning explains that the "transverse axis" is not the transverse plane, and a callout explains that *the screen is this game's plane*.
+2. **Movements in this plane:** a definition and an everyday example for each movement, each with **▶ show me**. The sagittal demos use the real muscled android and show the **live joint angle** (e.g. knee 176° → 85° = "angle DECREASES → FLEXION"). The frontal demos use a back-view figure, and the transverse demos use a top-down figure. The frontal tutorial also shows the cross-plane palm step (pronation and supination, shown in top view). This page also lists the movements from the other planes.
+3. **Contraction types:** a tree with **ISOTONIC** (concentric, eccentric) on one side and **STATIC** (isometric) on the other. Each type is shown in a dumbbell-curl demo with the matching muscle colours, plus a full curl (concentric going up, eccentric going down). It ends with the landing example: "movement ≠ contraction".
+4. **Muscles:** each muscle's location and main action. In the sagittal tutorial, clicking a row highlights that muscle on the android.
+5. **How to play:** level-specific rules.
+
+**Printable review sheet** (`review-sheet.html?level=<id>`): planes and axes with diagrams, a movement table, the contraction tree, a key-muscle table, and 8 self-check questions with a toggleable answer key. It is built from the same content file, so it always matches the game.
+
 ## 2. Level 2: Factory Escape (sagittal plane) [PLAYABLE]
 
 ### Core loop
@@ -43,6 +55,20 @@ The three levels tell one story, and each one is locked to a single plane of mov
 
 Difficulty rises with each hazard: speed goes from 380 to about 500 px/s, and the timer drops from 8 s to a minimum of 4.5 s.
 
+**Hazard order is tiered.** Simple joint actions come first, the subtle ones later:
+
+| Slots | Hazards | Tier |
+|---|---|---|
+| 1–3 | Gap (jump = extension), crate (push = extension), gap | 1 |
+| 4–5 | Trolley rail (reach = flexion, hold = isometric), laser slide | 2 |
+| 6 | One more tier ≤2 hazard | ≤2 |
+| 7 | High ledge (eccentric landing) | 3 |
+| 8–10 | Random mix | any |
+
+**Rotating axis names.** The HUD label switches between *frontal / transverse / mediolateral axis* every 8 s. Feedback and failure cards use the current name, and the failure card lists all of them.
+
+**Rival androids.** Other escapees run on a hazier catwalk behind the player, drawn smaller. They overtake the player (or get overtaken), jump the catwalk gaps, and sometimes fail: a tuck-roll into a gap with an explosion from below, or a malfunction and collapse ("UNIT-07 LOST"). They share the slowed time during decisions. They are background drama only and never hint at the current answer.
+
 ### Outcome rules
 
 | Student picks… | What happens |
@@ -58,7 +84,7 @@ Difficulty rises with each hazard: speed goes from 380 to about 500 px/s, and th
 | Hazard | Question | Correct | In-plane wrong answer → animation | Notes |
 |---|---|---|---|---|
 | **Floor gap** (molten pit) | Hip & knee movement to jump | **Extension** (glutes, quads, gastrocnemius: C) | Flexion → tighter tuck, roll into the pit, explosion from below | Landing shows eccentric quads (E) |
-| **Laser grid** (head height) | Hip & knee movement to slide under | **Flexion** (quads and glutes control the drop: E) | Extension → stands tall into the beams, gets electrocuted, explodes | Teaches that gravity-driven flexion is controlled eccentrically |
+| **Laser grid** (head height) | Hip & knee movement to slide under | **Flexion**. The main feedback is kept simple; a "Going deeper" note explains that the quads and glutes control the drop eccentrically | Extension → stands tall into the beams, gets electrocuted, explodes | Teaches that gravity-driven flexion is controlled eccentrically |
 | **Blocked conveyor** (400 kg crate) | Elbow movement to shove it | **Extension** (triceps: C, plus anterior deltoid and pectoralis major) | Flexion → pulls the crate onto itself, crushed | |
 | **High ledge** | Quadriceps contraction on landing | **Eccentric** | Concentric → knees lock straight and buckle backward; Isometric → rigid landing, bounces and crashes | Contraction question |
 | **Trolley rail**, step 1 | Shoulder movement to reach forward and up | **Flexion** (anterior deltoid: C) | Extension → arms swing back, misses the handle, falls into the pit | Two-step hazard |
@@ -100,7 +126,7 @@ How the muscles are drawn and animated:
 - **Briefing screen** before play explains the plane/axis idea and defines the three contraction types.
 - **Pause screen** shows a planes/axes/movements reference table.
 - **Muscle labels**: press L to show every muscle's name.
-- **Muscle monitor** in the HUD lists the active muscles with C/E/I letters, so it works for colour-blind players.
+- **Muscle monitor** in the HUD lists the active muscles with C/E/I letters, so it works for colour-blind players. The legend notes that C + E = isotonic.
 - **Reduce flashing & shake** option; it switches on automatically when the device has `prefers-reduced-motion` set.
 - **Keyboard-only play** is supported.
 
@@ -130,7 +156,17 @@ Development is paused at the teacher's request. All that exists is a placeholder
 
 ### Story
 
-This level takes place *before* the escape. The android is a test subject forced to perform precision tasks on a climbing wall. **Scientists are always visible behind an observation window.** Wrong responses do **not** reset the level or fail it outright. Instead the scientists press a button and **shock** the android, which costs one battery cell from its **life total**. The level carries on.
+This level takes place *before* the escape. The android is a test subject forced to perform precision tasks on a climbing wall. **Scientists are always visible behind an observation window.**
+
+Wrong responses do **not** reset the level. Instead the scientists press a button and **shock** the android, which costs one battery cell from its **life total** (proposed: 5 cells), and the test continues. The shocks escalate: sparks at 4 cells, visor flicker at 2, limbs twitching at 1.
+
+When the last cell is gone, the android **malfunctions and shuts off**: its limbs go limp, the visor fades, and a "TEST TERMINATED: SUBJECT OFFLINE" screen appears. That ends the level. Whether the battery runs out or the wall is completed, the level **always ends with a PRECISION REPORT**:
+
+- tasks completed
+- first-try accuracy
+- errors by type (abduction/adduction mix-ups, plane errors, palm-step errors)
+- shocks taken
+- review targets that link back to the tutorial
 
 ### Camera and controls
 
@@ -139,7 +175,7 @@ This level takes place *before* the escape. The android is a test subject forced
   - select a limb (L arm `Q`, R arm `E`, L leg `Z`, R leg `C`, or click it)
   - choose the movement that brings the limb to the target hold or button lane
 - **Move phase** (frontal plane): **abduction** or **adduction** at the shoulder or hip to reach the target. The arm muscles that light up are the deltoid (middle fibres) and supraspinatus for abduction, and the latissimus dorsi and pectoralis major for adduction. The leg muscles are the gluteus medius for abduction and the adductor group for adduction. These muscles would be added to the rig.
-- **Press phase:** orient the palm (pronation or supination) to press a button. **⚠ Content flag:** forearm pronation and supination are *transverse-plane* movements (longitudinal axis). See AGENTIC_WORKFLOW §8 for options; the recommendation is to keep the step and label its plane honestly.
+- **Press phase (kept, teacher decision):** turn the palm (pronation or supination) to press a button. This step is labelled honestly as a **transverse-plane** movement (longitudinal/vertical axis): "this task uses a second plane". A wrong palm choice costs a shock, but it is reported as a *palm-step error*, never as a plane error.
 - **Optional frontal-plane variants:**
   - foot **inversion/eversion** to stand on angled footholds
   - trunk **lateral flexion** to lean around obstacles
@@ -154,7 +190,7 @@ This level takes place *before* the escape. The android is a test subject forced
 - **Correct:** the limb moves smoothly, the button lights up and a precision score goes up.
 - **Wrong but in the frontal plane** (e.g. adduction instead of abduction): the limb moves the wrong way and misses the target. Then the scientists' shock plays (an arc across the glass, the android convulses, one battery cell drains), followed by the explanation card.
 - **Wrong plane** (e.g. flexion): the limb swings toward or away from the camera (foreshortened) and misses, then the shock and a plane-error card.
-- **0 lives:** "Test terminated". The session ends with a precision report. This is not a game-over reset, and the teacher should confirm it (see AGENTIC_WORKFLOW §8.4).
+- **0 lives:** the android malfunctions and shuts off, which ends the level, followed by the precision report (teacher decision, AGENTIC_WORKFLOW §8).
 
 ### Engineering notes
 

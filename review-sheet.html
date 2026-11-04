@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review Sheet: Planes, Axes &amp; Contractions</title>
+  <style>
+    :root { --ink: #12202c; --dim: #4d6175; --line: #c9d5df; --accent: #0b7fa6; --c: #e4572e; --e: #2f7fd6; --i: #c99300; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #e9eef2; color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .page { max-width: 900px; margin: 24px auto; background: #fff; padding: 32px 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid var(--ink); padding-bottom: 10px; }
+    h1 { margin: 0; font-size: 26px; letter-spacing: 0.02em; }
+    .kicker { font: 700 11px ui-monospace, monospace; letter-spacing: 0.15em; color: var(--accent); }
+    .fields { font-size: 13px; color: var(--dim); text-align: right; }
+    .fields span { display: inline-block; min-width: 180px; border-bottom: 1px solid var(--ink); margin-left: 6px; }
+    h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+    h2 .n { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; background: var(--ink); color: #fff; font-size: 13px; margin-right: 6px; }
+    .planes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .plane { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .plane.hl { border: 2px solid var(--accent); }
+    .plane svg { width: 100%; height: 150px; display: block; }
+    .plane h3 { margin: 4px 0; font-size: 15px; }
+    .plane p { margin: 3px 0; font-size: 12.5px; }
+    .note { background: #fff7e0; border-left: 4px solid #e0a800; padding: 8px 10px; margin: 10px 0; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+    th { background: #f1f5f8; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td.pl { font-weight: 700; white-space: nowrap; }
+    .tree { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+    .box { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+    .box h4 { margin: 0 0 4px; font-size: 14px; }
+    .leaves { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .leaf { border-left: 5px solid var(--col); }
+    .chip { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 4px; color: #fff; font: 800 11px ui-monospace, monospace; background: var(--col); margin-right: 4px; }
+    ol.check li { margin-bottom: 14px; }
+    ol.check .ans { border-bottom: 1px dotted var(--dim); height: 22px; margin-top: 4px; }
+    .key { margin-top: 18px; padding: 10px 12px; background: #f1f5f8; border-radius: 8px; font-size: 12.5px; }
+    .key.hidden { display: none; }
+    .toolbar { max-width: 900px; margin: 16px auto 0; display: flex; gap: 8px; justify-content: flex-end; }
+    .toolbar button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #8aa0b3; background: #fff; cursor: pointer; }
+    .toolbar button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+    footer { margin-top: 18px; font-size: 11px; color: var(--dim); text-align: center; }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .page { box-shadow: none; margin: 0; padding: 0 6mm; max-width: none; }
+      h2 { break-after: avoid; }
+      .planes, .tree, table { break-inside: avoid; }
+      .pb { break-before: page; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="key-btn">Show answer key</button>
+    <button class="primary" onclick="window.print()">🖨 Print</button>
+  </div>
+  <div class="page" id="sheet"></div>
+
+  <script src="js/content.js"></script>
+  <script src="js/diagrams.js"></script>
+  <script>
+  (function () {
+    const C = window.SEHS.content;
+    const D = window.SEHS.diagrams;
+    const level = (new URLSearchParams(location.search).get('level')) || 'sagittal';
+    const lv = C.LEVELS.find((l) => l.id === level) || C.LEVELS[1];
+    const ids = ['sagittal', 'frontal', 'transverse'];
+    const K = C.CONTRACTIONS;
+    const colVar = { concentric: 'var(--c)', eccentric: 'var(--e)', isometric: 'var(--i)' };
+
+    const planes = ids.map((id) => {
+      const p = C.PLANES[id];
+      return `<div class="plane ${id === level ? 'hl' : ''}">
+        ${D.planeSVG(id, { color: '#0b7fa6', ink: '#12202c' })}
+        <h3>${p.name}${p.altName ? ` <small>(${p.altName})</small>` : ''}</h3>
+        <p><b>Divides the body into:</b> ${p.divides}</p>
+        <p><b>Axis:</b> ${C.AXIS_NAMES[id].join(' / ')}</p>
+      </div>`;
+    }).join('');
+
+    const moveRows = ids.map((id) => {
+      const p = C.PLANES[id];
+      return p.movements.map((m, i) => `<tr>${i === 0 ? `<td class="pl" rowspan="${p.movements.length}">${p.name}<br><small>${C.AXIS_NAMES[id].join(' / ')}</small></td>` : ''}<td><b>${m}</b></td><td>${C.MOVEMENT_DEFS[m]}</td><td>${C.MOVEMENT_EXAMPLES[m] || ''}</td></tr>`).join('');
+    }).join('');
+
+    const leaf = (k) => `<div class="box leaf" style="--col:${colVar[k]}"><h4><span class="chip" style="--col:${colVar[k]}">${K[k].letter}</span>${K[k].name}</h4>${K[k].def}<br><i>e.g. ${K[k].example}</i></div>`;
+
+    const muscleIds = C.LEVEL_MUSCLES[level];
+    const muscles = muscleIds.map((id) => { const m = C.MUSCLES[id]; return `<tr><td><b>${m.name}</b></td><td>${m.where}</td><td>${m.action}</td></tr>`; }).join('');
+
+    const checks = C.REVIEW_CHECKS.map((c) => `<li>${c.q}<div class="ans"></div><div class="ans"></div></li>`).join('');
+    const key = C.REVIEW_CHECKS.map((c, i) => `<div><b>${i + 1}.</b> ${c.a}</div>`).join('');
+
+    document.getElementById('sheet').innerHTML = `
+      <header>
+        <div><div class="kicker">KINETIC ESCAPE · ${lv.title.toUpperCase()} · REVIEW SHEET</div><h1>Planes, Axes, Movements &amp; Contractions</h1></div>
+        <div class="fields">Name<span></span><br><br>Date<span></span></div>
+      </header>
+
+      <h2><span class="n">1</span>Planes and axes</h2>
+      <p>Every movement happens in a <b>plane</b> and turns about an <b>axis</b>. The axis passes through the joint at <b>90°</b> to the plane.</p>
+      <div class="planes">${planes}</div>
+      <div class="note">⚠ Different textbooks use different axis names, so learn all of them. The <b>transverse axis</b> is another name for the <b>frontal axis</b>. It is <b>not</b> the transverse plane.</div>
+
+      <h2><span class="n">2</span>Movement types</h2>
+      <table><tr><th>Plane / axis</th><th>Movement</th><th>Definition</th><th>Example</th></tr>${moveRows}</table>
+      <div class="note"><b>Flexion vs extension:</b> think about the ANGLE at the joint. Flexion makes it smaller; extension makes it bigger.</div>
+
+      <h2 class="pb"><span class="n">3</span>Muscle contraction types</h2>
+      <div class="tree">
+        <div class="box"><h4>ISOTONIC: the muscle changes length (the joint moves)</h4>${C.ISOTONIC.def}<div class="leaves">${leaf('concentric')}${leaf('eccentric')}</div></div>
+        <div class="box"><h4>STATIC</h4>The muscle stays the same length.<div class="leaves" style="grid-template-columns:1fr">${leaf('isometric')}</div></div>
+      </div>
+      <div class="note"><b>Movement ≠ contraction.</b> When you land from a jump the knees FLEX, but the quadriceps contract ECCENTRICALLY (they lengthen while working to brake the fall).</div>
+
+      <h2><span class="n">4</span>Key muscles: ${lv.title}</h2>
+      <table><tr><th>Muscle</th><th>Where</th><th>Main action</th></tr>${muscles}</table>
+
+      <h2><span class="n">5</span>Check yourself</h2>
+      <ol class="check">${checks}</ol>
+      <div class="key hidden" id="key"><b>Answer key</b>${key}</div>
+      <footer>Kinetic Escape · SEHS review · generated from the game's content file, so the sheet always matches the game.</footer>
+    `;
+    const btn = document.getElementById('key-btn');
+    btn.addEventListener('click', () => {
+      const k = document.getElementById('key');
+      k.classList.toggle('hidden');
+      btn.textContent = k.classList.contains('hidden') ? 'Show answer key' : 'Hide answer key';
+    });
+  })();
+  </script>
+</body>
+</html>

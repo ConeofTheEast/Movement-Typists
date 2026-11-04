@@ -26,10 +26,11 @@ The agents are defined as Claude Code subagents in [`.claude/agents/`](../.claud
 | Agent | Owns | Main inputs | Main outputs | Done when |
 |---|---|---|---|---|
 | **Producer** (the main session) | Plan, task routing, gates, git | Teacher request, this doc | Task breakdown, integration, commits/PRs | Every gate passed, branch pushed |
-| **sehs-content-specialist** | `js/content.js` | Syllabus refs, teacher notes | Planes/axes/movement tables, question bank, success & failure explanations | Every question has one defensible correct answer; terms match the class textbook |
+| **sehs-content-specialist** | `js/content.js`, `review-sheet.html` | Syllabus refs, teacher notes | Planes/axes/movement tables, question bank, success & failure explanations, tutorial text, review-sheet self-checks | Every question has one defensible correct answer; terms match the class textbook |
 | **anatomy-animator** | `js/android.js`, pose library in level files | Muscle list, movement list | Origins/insertions, joint conventions, poses, muscle activation scripts (C/E/I per phase) | Anatomy audit checklist (section 6) passes |
 | **level-designer** | Hazard specs and pacing in `docs/GAME_DESIGN.md`, course builder | Question bank, poses | Hazard table (trigger, anticipation pose, success and each failure branch), difficulty curve | Every question maps to a hazard whose outcome visibly demonstrates the concept |
-| **game-engineer** | `js/sagittal.js`, `js/main.js`, future level files | Hazard specs, poses | Working code with no console errors | Playtest script passes all branches |
+| **game-engineer** | `js/sagittal.js`, `js/main.js`, `js/tutorial.js`, future level files | Hazard specs, poses | Working code with no console errors | Playtest script passes all branches |
+| **art-director** | `docs/SPRITE_PROMPTS.md`, `assets/sprites/`, `js/sprites.js` | Teacher-generated images | Sprite prompts, sliced and calibrated sprite parts, manifest pivots | `index.html?sprites=debug` shows every pivot on its joint, and a muscle overlay still lines up |
 | **vfx-audio** | `js/effects.js` | Hazard specs | Particles, crack, glitch, synth SFX, reduced-effects variants | Effects readable at classroom-projector size; reduced mode has no rapid flashing |
 | **playtest-qa** | `tools/playtest.js`, screenshots | A build | Branch-coverage report and screenshots, bug list | Every hazard × {correct, sagittal-wrong, plane-wrong, timeout} runs without errors and looks right |
 | **pedagogy-reviewer** | Review notes only (read-only on code) | Build + content | Reading-level, misconception and accessibility review | No item gives away its own answer; feedback names the plane, axis, movement, agonist and contraction |
@@ -226,7 +227,9 @@ The last argument is a comma-separated list of choices, one per decision: `corre
 
 | Package | Status | Contents |
 |---|---|---|
-| **WP-S1 Sagittal prototype** | ✅ this commit | Android rig with 15 lower- and upper-limb muscles; 5 hazards (gap, laser, crate, drop, trolley rail) with 6 questions; slow-mo, timer and tension effects; all failure branches; checkpoints; review summary |
+| **WP-S1 Sagittal prototype** | ✅ done | Android rig with 15 lower- and upper-limb muscles; 5 hazards (gap, laser, crate, drop, trolley rail) with 6 questions; slow-mo, timer and tension effects; all failure branches; checkpoints; review summary |
+| **WP-S1.1 Teacher feedback round 1** | ✅ this commit | Tutorial and review section before every game: 5 pages with animated demos, plus a printable review sheet (`review-sheet.html`) with an answer key. Rotating axis names. Isotonic added. Tiered hazard order. Rival androids on a back catwalk. Optional sprite-skin pipeline (`js/sprites.js`, `assets/sprites/manifest.js`, `docs/SPRITE_PROMPTS.md`) |
+| WP-ART1 Sprites | waiting on art | Teacher generates sprites with `docs/SPRITE_PROMPTS.md`; art-director wires them in and calibrates pivots |
 | WP-S2 Sagittal content expansion | next | Ankle hazards (plantarflexion pressure plate, dorsiflexion toe-clearance trip wire), trunk flexion/extension, hyperextension; difficulty modes (timer length, hints on or off) |
 | WP-S3 Teacher tools | next | Export the session log as CSV; a class-code leaderboard (optional); misconception summary per student |
 | **WP-F1 Frontal level** | design (see GAME_DESIGN §5) | Climbing wall with per-limb control, abduction and adduction, palm orientation, scientist shocks, lives |
@@ -234,11 +237,14 @@ The last argument is a comma-separated list of choices, one per decision: `corre
 
 ---
 
-## 8. Open decisions for the teacher (Gate A items)
+## 8. Teacher decisions (Gate A, resolved)
 
-1. **Pronation and supination in the frontal level.** Forearm pronation and supination are **transverse-plane** movements about the longitudinal axis, not frontal-plane ones. Options:
-   - **(a) Recommended:** keep the palm step but label it honestly as a transverse movement. This becomes a deliberate "two planes, one task" moment, and choosing it in the palm step is never punished as a plane error.
-   - **(b)** Swap it for wrist **radial or ulnar deviation**, which is frontal plane, so the level stays single-plane.
-2. **Axis naming.** The game says *frontal axis* (also transverse or mediolateral), *sagittal axis* (anteroposterior) and *longitudinal axis*. Change one line in `content.js` if your textbook differs.
-3. **Laser slide feedback.** The game teaches that dropping into a slide is hip and knee **flexion** controlled by an **eccentric** quadriceps. This is accurate but subtle, so confirm you want that nuance at this level.
-4. **Frontal level life total.** What happens at 0 lives? The proposal is that the session ends with a precision report ("test terminated"), without a game-over reset.
+| # | Question | Decision | Where it lives |
+|---|---|---|---|
+| 1 | Pronation/supination in the frontal level, which are transverse-plane movements | **Keep the palm step.** It is labelled honestly as a transverse-plane movement ("the palm step uses a second plane") and is never scored as a plane error | `content.js → TUTORIALS.frontal.crossPlane`, GAME_DESIGN §5 |
+| 2 | Axis naming | **Use all the names and rotate them at a regular interval.** The sagittal-plane axis alternates frontal / transverse / mediolateral, the frontal-plane axis alternates sagittal / anteroposterior, and the transverse-plane axis alternates longitudinal / vertical. The HUD switches every 8 s, and feedback cards use whichever name is current. The tutorial and review sheet always list every name and warn that the "transverse axis" is not the transverse plane | `content.js → AXIS_NAMES`, `axisName()` |
+| 3 | Laser slide nuance (flexion controlled by an eccentric quadriceps) | **Keep it, but start simpler.** The main feedback line is now plain flexion; the eccentric detail appears as a "Going deeper" note. Hazards are tiered so simple joint actions come first | `OBSTACLES.*.tier`, `success.deeper` |
+| 4 | Frontal level life total | **Life total plus a precision report.** Each wrong answer brings a researcher shock and costs one battery cell. When the cells run out, the android malfunctions and **shuts down**, which ends the level. The level always ends with a precision report | GAME_DESIGN §5 |
+| 5 | Contraction vocabulary | **Isotonic added** as the umbrella term for concentric and eccentric, with isometric as the static type. It appears in the tutorial tree, the feedback chips ("eccentric (isotonic)"), the HUD legend and the review sheet | `content.js → ISOTONIC`, `contractionLabel()` |
+
+New open items go here, as a numbered list, for the next Gate A.
