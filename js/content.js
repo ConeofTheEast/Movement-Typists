@@ -452,6 +452,11 @@
     'legR:Abduction': 'Abduction slides the whole leg out sideways about a different axis. It does not turn the toes.',
     'legR:Adduction': 'Adduction slides the whole leg in sideways about a different axis. It does not turn the toes.',
     'legR:Inversion': 'Inversion tilts the sole of the foot at the ankle. It does not turn the toes at the hip.',
+    'armL:Abduction': 'Abduction lifts the arm up and out to the side (frontal plane). Horizontal abduction swings an already-raised arm level (transverse plane).',
+    'armR:Abduction': 'Abduction lifts the arm up and out to the side (frontal plane). Horizontal abduction swings an already-raised arm level (transverse plane).',
+    'armL:Adduction': 'Adduction lowers the arm down toward the side (frontal plane). Horizontal adduction swings an already-raised arm level, across the chest (transverse plane).',
+    'armR:Adduction': 'Adduction lowers the arm down toward the side (frontal plane). Horizontal adduction swings an already-raised arm level, across the chest (transverse plane).',
+    'trunk:Lateral flexion': 'Lateral flexion bends the trunk sideways (frontal plane). Rotation turns the trunk to face a new direction (transverse plane).',
   };
 
   function planeFailText(choice, limb, levelPlane) {
@@ -1186,8 +1191,8 @@
       demos: ['Rotation', 'Medial rotation', 'Lateral rotation', 'Horizontal abduction', 'Horizontal adduction', 'Pronation', 'Supination'],
       play: [
         'The night after the escape. Your allies are fixing a wrecked transport in a scrapyard. Capture drones attack from every side. Hold them off until the repair bar is full.',
-        'You look straight down from above. The axis for every move points out of the screen (⊙), running from head to toe through the body.',
-        'Click or tap a drone (or use the arrow keys or A/D) to choose a target. Space strikes it right away.',
+        'You look straight down from above. For the trunk and a hanging limb, the axis points out of the screen (⊙), running from head to toe.',
+        'TARGETING: click a drone or press A/D (or the arrow keys), then SPACE to strike. Armoured drones need YOU to target them.',
         'The android handles small drones by itself. Every auto-strike is labelled with its transverse movement, so watch and learn.',
         'Big threats freeze time. Choose the right MOVEMENT or CONTRACTION before the timer runs out. Click, or press 1–4.',
         'ROTATION: turn the trunk (spine) to face a drone behind you.',
@@ -1205,6 +1210,10 @@
         'Spend scrap on upgrades, then fit them inside your POWER budget for the next wave.',
         'Questions you miss go into the FAULT LOG and come back later. Getting topics right raises CALIBRATION, which powers up the android.',
         'Every 5 waves the WARDEN arrives: a huge boss drone that fires threats back to back.',
+        'PRACTICE MODE: freezes have no timer, so you can think each one through. Switch it off when you are ready to be tested.',
+        'MOVEMENT CODEX: every action you meet gets a page with its joint, prime movers and a sport example.',
+        'MASTERY: answer an action right on the first try 3 times in a row to earn its badge. Badges unlock visor colours and strike trails.',
+        'WAVE CONTRACTS: before a wave, pick an optional goal, such as "No ally netted". Complete it for bonus scrap.',
       ],
     },
   };
@@ -1304,7 +1313,7 @@
       whyWrong: ['That pair describes a spin or twist.', 'That pair describes a somersault.', null, 'The mediolateral axis belongs to the sagittal plane, not the frontal plane.'],
     },
     {
-      id: 'pa08', topic: 'planes_axes', difficulty: 2,
+      id: 'pa08', topic: 'planes_axes', difficulty: 2, action: 'Rotation',
       stem: 'A figure skater spins on the spot. In which plane and about which axis does the skater rotate?',
       options: ['Transverse plane, vertical axis', 'Frontal plane, vertical axis', 'Sagittal plane, transverse axis', 'Transverse plane, transverse axis'],
       answer: 0,
@@ -1336,7 +1345,7 @@
       whyWrong: [null, 'The sagittal axis is for cartwheel-type rotation, not a forward somersault.', 'A twist is about the longitudinal axis, not the sagittal axis.', 'The forward somersault also needs rotation about the frontal axis.'],
     },
     {
-      id: 'pa12', topic: 'planes_axes', difficulty: 3,
+      id: 'pa12', topic: 'planes_axes', difficulty: 3, action: 'Rotation',
       stem: 'A student writes: "Trunk rotation in a golf swing happens about the transverse axis." Which statement best corrects this?',
       options: ['Correct: the transverse plane uses the transverse axis', 'Wrong: it is about the longitudinal axis', 'Wrong: it is in the sagittal plane', 'Wrong: it is about the sagittal axis'],
       answer: 1,
@@ -1346,7 +1355,7 @@
 
     // ---------------- joint_actions ----------------
     {
-      id: 'ja01', topic: 'joint_actions', difficulty: 1,
+      id: 'ja01', topic: 'joint_actions', difficulty: 1, action: 'Medial rotation',
       stem: 'Which of the following movements occurs in the transverse plane?',
       options: ['Abduction', 'Lateral flexion', 'Medial rotation', 'Dorsiflexion'],
       answer: 2,
@@ -1354,7 +1363,7 @@
       whyWrong: ['Abduction is a frontal-plane movement.', 'Lateral flexion is a frontal-plane movement.', null, 'Dorsiflexion is a sagittal-plane movement.'],
     },
     {
-      id: 'ja02', topic: 'joint_actions', difficulty: 1,
+      id: 'ja02', topic: 'joint_actions', difficulty: 1, action: 'Supination',
       stem: 'With the elbow bent at 90°, which term describes turning the forearm so the palm faces upward?',
       options: ['Pronation', 'Supination', 'Lateral rotation', 'Eversion'],
       answer: 1,
@@ -1370,7 +1379,7 @@
       whyWrong: ['Horizontal adduction is a transverse-plane movement.', 'Plantarflexion is a sagittal-plane movement.', null, 'Supination is a transverse-plane movement.'],
     },
     {
-      id: 'ja04', topic: 'joint_actions', difficulty: 2,
+      id: 'ja04', topic: 'joint_actions', difficulty: 2, action: 'Horizontal adduction',
       stem: 'In a chest fly, the arms start straight out to the sides at shoulder height and swing forward to meet in front of the chest. Identify the shoulder movement.',
       options: ['Adduction', 'Horizontal adduction', 'Flexion', 'Horizontal abduction'],
       answer: 1,
@@ -1378,7 +1387,7 @@
       whyWrong: ['Adduction lowers the arm down to the side in the frontal plane.', null, 'Flexion raises the arm forward and up in the sagittal plane.', 'Horizontal abduction is the reverse: arms swing out and back.'],
     },
     {
-      id: 'ja05', topic: 'joint_actions', difficulty: 2,
+      id: 'ja05', topic: 'joint_actions', difficulty: 2, action: 'Horizontal abduction',
       stem: 'In a reverse fly, the arms start straight out in front at shoulder height and swing out and back. Identify the shoulder movement.',
       options: ['Horizontal abduction', 'Abduction', 'Extension', 'Lateral rotation'],
       answer: 0,
@@ -1386,7 +1395,7 @@
       whyWrong: [null, 'Abduction raises the arm sideways from the side of the body in the frontal plane.', 'Extension swings the arm down and back in the sagittal plane.', 'Lateral rotation turns the arm about its own long axis; it does not swing it.'],
     },
     {
-      id: 'ja06', topic: 'joint_actions', difficulty: 2,
+      id: 'ja06', topic: 'joint_actions', difficulty: 2, action: 'Rotation',
       stem: 'In the backswing of a golf drive, the shoulders turn away from the target while the feet stay planted. Which movement occurs at the spine?',
       options: ['Lateral flexion', 'Rotation', 'Hyperextension', 'Lateral rotation'],
       answer: 1,
@@ -1394,7 +1403,7 @@
       whyWrong: ['Lateral flexion bends the trunk sideways (frontal plane).', null, 'Hyperextension arches the spine backward (sagittal plane).', 'Lateral rotation describes a limb at the shoulder or hip, not the spine.'],
     },
     {
-      id: 'ja07', topic: 'joint_actions', difficulty: 2,
+      id: 'ja07', topic: 'joint_actions', difficulty: 2, action: 'Pronation',
       stem: 'To dribble, a basketball player turns the forearm from a handshake position until the palm faces the floor. Which radio-ulnar movement is this?',
       options: ['Supination', 'Pronation', 'Medial rotation', 'Ulnar deviation'],
       answer: 1,
@@ -1402,7 +1411,7 @@
       whyWrong: ['Supination turns the palm to face up.', null, 'Medial rotation happens at the shoulder, not the radio-ulnar joint.', 'Ulnar deviation tilts the hand toward the little finger at the wrist.'],
     },
     {
-      id: 'ja08', topic: 'joint_actions', difficulty: 2,
+      id: 'ja08', topic: 'joint_actions', difficulty: 2, action: 'Lateral rotation',
       stem: 'A tennis player prepares to serve: the upper arm is raised and the racket drops back behind the head. Identify the movement at the shoulder.',
       options: ['Medial rotation', 'Lateral rotation', 'Horizontal adduction', 'Extension'],
       answer: 1,
@@ -1410,7 +1419,7 @@
       whyWrong: ['Medial rotation brings the racket forward during the hit.', null, 'Horizontal adduction swings the arm across the chest.', 'Extension swings the arm down and back in the sagittal plane.'],
     },
     {
-      id: 'ja09', topic: 'joint_actions', difficulty: 2,
+      id: 'ja09', topic: 'joint_actions', difficulty: 2, action: 'Medial rotation',
       stem: 'During the acceleration phase of an overarm throw, the upper arm turns forcefully inward. Which movement occurs at the shoulder?',
       options: ['Medial rotation', 'Pronation', 'Lateral rotation', 'Adduction'],
       answer: 0,
@@ -1418,7 +1427,7 @@
       whyWrong: [null, 'Pronation happens at the forearm, not the shoulder.', 'Lateral rotation turns the arm outward (the cocking phase).', 'Adduction lowers the arm toward the side in the frontal plane.'],
     },
     {
-      id: 'ja10', topic: 'joint_actions', difficulty: 3,
+      id: 'ja10', topic: 'joint_actions', difficulty: 3, action: 'Lateral rotation',
       stem: 'For a side-foot pass, a footballer turns the toes of the kicking leg outward from the hip. Identify the hip movement and its plane.',
       options: ['Medial rotation, transverse plane', 'Lateral rotation, transverse plane', 'Eversion, frontal plane', 'Abduction, frontal plane'],
       answer: 1,
@@ -1450,17 +1459,25 @@
       whyWrong: [null, 'That describes plantarflexion.', 'The description is right but inversion is a frontal-plane movement.', 'That describes medial rotation of the hip.'],
     },
     {
-      id: 'ja14', topic: 'joint_actions', difficulty: 3,
+      id: 'ja14', topic: 'joint_actions', difficulty: 3, action: 'Horizontal adduction',
       stem: 'In the final sweep of a discus throw, the straight throwing arm swings forward around the body at shoulder height. Which description is correct?',
       options: ['Horizontal adduction, transverse plane, longitudinal axis', 'Adduction, frontal plane, sagittal axis', 'Flexion, sagittal plane, frontal axis', 'Horizontal abduction, transverse plane, longitudinal axis'],
       answer: 0,
       explain: 'A straight arm at shoulder height swinging toward the midline is horizontal adduction: transverse plane, longitudinal axis.',
       whyWrong: [null, 'Adduction lowers the arm to the side; the discus arm stays at shoulder height.', 'Flexion raises the arm forward and up from the side.', 'Horizontal abduction swings the arm backward, as in the wind-up.'],
     },
+    {
+      id: 'ja15', topic: 'joint_actions', difficulty: 2, action: 'Horizontal abduction',
+      stem: 'In a backhand frisbee throw, the straight throwing arm starts across the chest at shoulder height and swings out to the side. Identify the shoulder movement.',
+      options: ['Horizontal adduction', 'Abduction', 'Horizontal abduction', 'Extension'],
+      answer: 2,
+      explain: 'A raised arm swinging away from the midline at shoulder height is horizontal abduction (transverse plane). The posterior deltoid is the prime mover.',
+      whyWrong: ['Horizontal adduction is the reverse: the raised arm swings in across the chest.', 'Abduction lifts the arm up from the side of the body (frontal plane). Here the arm is already at shoulder height.', null, 'Extension swings the arm down and back in the sagittal plane.'],
+    },
 
     // ---------------- contractions ----------------
     {
-      id: 'ct01', topic: 'contractions', difficulty: 1,
+      id: 'ct01', topic: 'contractions', difficulty: 1, action: 'Eccentric',
       stem: 'Which type of contraction happens when a muscle lengthens while producing force?',
       options: ['Concentric', 'Isometric', 'Eccentric', 'Relaxation (no force)'],
       answer: 2,
@@ -1468,7 +1485,7 @@
       whyWrong: ['Concentric contractions shorten the muscle.', 'Isometric contractions keep the muscle the same length.', null, 'A relaxed muscle produces no force. Lengthening WHILE producing force is eccentric. Eccentric never means relaxed.'],
     },
     {
-      id: 'ct02', topic: 'contractions', difficulty: 1,
+      id: 'ct02', topic: 'contractions', difficulty: 1, action: 'Isometric',
       stem: 'A muscle produces force but does not change length, so the joint does not move. Identify the contraction type.',
       options: ['Isotonic', 'Isometric', 'Concentric', 'Eccentric'],
       answer: 1,
@@ -1484,7 +1501,7 @@
       whyWrong: ['Isometric is not isotonic because the length stays the same.', 'Isometric is not isotonic because the length stays the same.', null, 'Isometric is not isotonic at all, and isotonic has two kinds.'],
     },
     {
-      id: 'ct04', topic: 'contractions', difficulty: 2,
+      id: 'ct04', topic: 'contractions', difficulty: 2, action: 'Concentric',
       stem: 'During the upward phase of a biceps curl, what type of contraction does the biceps brachii perform?',
       options: ['Eccentric', 'Concentric', 'Isometric', 'Relaxation (no force)'],
       answer: 1,
@@ -1492,7 +1509,7 @@
       whyWrong: ['Eccentric happens on the way DOWN, when the biceps lengthens.', null, 'Isometric would hold the weight still.', 'A relaxed muscle makes no force, so it could not lift the weight.'],
     },
     {
-      id: 'ct05', topic: 'contractions', difficulty: 2,
+      id: 'ct05', topic: 'contractions', difficulty: 2, action: 'Eccentric',
       stem: 'During the downward phase of a squat, the knees and hips flex. What is the quadriceps doing?',
       options: ['Contracting concentrically', 'Contracting eccentrically', 'Relaxing, because gravity does the work', 'Contracting isometrically'],
       answer: 1,
@@ -1500,7 +1517,7 @@
       whyWrong: ['Concentric happens on the way UP, when the quadriceps shorten.', null, 'If the quadriceps relaxed, the body would drop uncontrolled.', 'Isometric would hold the squat still; here the knees are bending.'],
     },
     {
-      id: 'ct06', topic: 'contractions', difficulty: 2,
+      id: 'ct06', topic: 'contractions', difficulty: 2, action: 'Isometric',
       stem: 'A student holds a plank position for 60 seconds. What type of contraction do the abdominal muscles perform?',
       options: ['Concentric', 'Eccentric', 'Isometric', 'Isotonic'],
       answer: 2,
@@ -1508,7 +1525,7 @@
       whyWrong: ['Concentric would shorten the muscle and move the trunk.', 'Eccentric would lengthen the muscle and move the trunk.', null, 'Isotonic means the muscle changes length; in a plank it does not.'],
     },
     {
-      id: 'ct07', topic: 'contractions', difficulty: 3,
+      id: 'ct07', topic: 'contractions', difficulty: 3, action: 'Eccentric',
       stem: 'During the lowering phase of a push-up, which statement about the triceps brachii is correct?',
       options: ['It shortens under tension (concentric) to extend the elbow', 'It lengthens under tension (eccentric) to control elbow flexion', 'It lengthens with no tension because gravity lowers the body', 'It stays the same length (isometric) because the hands do not move'],
       answer: 1,
@@ -1516,7 +1533,7 @@
       whyWrong: ['Concentric triceps action happens on the way up.', null, 'Without tension the body would fall to the floor.', 'The hands are still, but the elbow angle changes, so the muscle length changes.'],
     },
     {
-      id: 'ct08', topic: 'contractions', difficulty: 3,
+      id: 'ct08', topic: 'contractions', difficulty: 3, action: 'Eccentric',
       stem: 'In late swing in sprinting (just before the foot lands), the hamstrings slow the lower leg as the knee extends. Which describes the hamstring contraction?',
       options: ['Concentric: they shorten to flex the knee', 'Eccentric: they lengthen to brake the knee', 'Isometric: they hold the knee angle fixed', 'Relaxed: momentum alone extends the knee'],
       answer: 1,
@@ -1524,7 +1541,7 @@
       whyWrong: ['The knee is extending, so the hamstrings are lengthening, not shortening.', null, 'The knee angle is changing, not fixed.', 'If they relaxed, nothing would brake the leg. Braking while lengthening is eccentric.'],
     },
     {
-      id: 'ct09', topic: 'contractions', difficulty: 2,
+      id: 'ct09', topic: 'contractions', difficulty: 2, action: 'Eccentric',
       stem: 'During the slow lowering phase of a lateral raise, what type of contraction does the middle deltoid perform?',
       options: ['Concentric', 'Eccentric', 'Isometric', 'No contraction'],
       answer: 1,
@@ -1548,12 +1565,28 @@
       whyWrong: [null, 'The bar is held still first, so there is no shortening.', 'Lowering lengthens the triceps, so it is not concentric.', 'The order is reversed.'],
     },
     {
-      id: 'ct12', topic: 'contractions', difficulty: 2,
+      id: 'ct12', topic: 'contractions', difficulty: 2, action: 'Isometric',
       stem: 'In a rugby scrum, both packs push as hard as they can but neither moves. What type of contraction do the leg extensors perform?',
       options: ['Concentric', 'Eccentric', 'Isometric', 'Isotonic'],
       answer: 2,
       explain: 'Force is produced with no change in muscle length or joint angle: isometric.',
       whyWrong: ['Concentric would shorten the muscles and drive the scrum forward.', 'Eccentric would mean the legs are being pushed back under control.', null, 'Isotonic means the muscle changes length, but nothing is moving.'],
+    },
+    {
+      id: 'ct13', topic: 'contractions', difficulty: 2, action: 'Concentric',
+      stem: 'In the acceleration phase of an overarm throw, the subscapularis turns the upper arm forcefully inward. What type of contraction does the subscapularis perform?',
+      options: ['Eccentric', 'Isometric', 'Concentric', 'Relaxation (no force)'],
+      answer: 2,
+      explain: 'The subscapularis shortens under tension to medially rotate the shoulder and speed up the arm: concentric.',
+      whyWrong: ['Eccentric would mean the subscapularis lengthens while braking the arm. Here it drives the arm inward.', 'Isometric would hold the arm still. Here the shoulder turns quickly.', null, 'A relaxed muscle makes no force, so it could not power the throw.'],
+    },
+    {
+      id: 'ct14', topic: 'contractions', difficulty: 3, action: 'Concentric',
+      stem: 'In a rotational medicine-ball throw, the feet stay planted and the trunk turns hard toward the target. Which contraction do the obliques that drive the turn perform?',
+      options: ['Isometric', 'Concentric', 'Eccentric', 'Relaxation (no force)'],
+      answer: 1,
+      explain: 'The obliques driving the turn shorten under tension to rotate the trunk toward the target: concentric.',
+      whyWrong: ['Isometric would hold the trunk still. Here the trunk turns.', null, 'Eccentric would mean the obliques lengthen while braking the turn. Here they drive it.', 'A relaxed muscle makes no force, so it could not power the throw.'],
     },
 
     // ---------------- agonist_antagonist ----------------
@@ -1606,7 +1639,7 @@
       whyWrong: [null, 'These muscles act at different joints and do not oppose each other.', 'Both flex the elbow, so they work together.', 'These oppose each other in hip abduction and adduction (frontal plane).'],
     },
     {
-      id: 'aa07', topic: 'agonist_antagonist', difficulty: 2,
+      id: 'aa07', topic: 'agonist_antagonist', difficulty: 2, action: 'Medial rotation',
       stem: 'During the release of an overarm throw, the shoulder medially rotates. Which muscle is the antagonist?',
       options: ['Subscapularis', 'Infraspinatus', 'Pectoralis major', 'Latissimus dorsi'],
       answer: 1,
@@ -1614,7 +1647,7 @@
       whyWrong: ['The subscapularis is a medial rotator (agonist).', null, 'The pectoralis major helps medially rotate the shoulder.', 'The latissimus dorsi helps medially rotate the shoulder.'],
     },
     {
-      id: 'aa08', topic: 'agonist_antagonist', difficulty: 2,
+      id: 'aa08', topic: 'agonist_antagonist', difficulty: 2, action: 'Horizontal adduction',
       stem: 'In a chest fly (horizontal adduction of the shoulder), which pair is correctly listed as agonist / antagonist?',
       options: ['Pectoralis major / posterior deltoid', 'Posterior deltoid / pectoralis major', 'Latissimus dorsi / triceps brachii', 'Anterior deltoid / pectoralis major'],
       answer: 0,
@@ -1622,7 +1655,7 @@
       whyWrong: [null, 'This is reversed: the posterior deltoid horizontally abducts.', 'Neither is the main horizontal adductor, and they are not an opposing pair here.', 'Both muscles horizontally adduct, so they work together (synergists).'],
     },
     {
-      id: 'aa09', topic: 'agonist_antagonist', difficulty: 3,
+      id: 'aa09', topic: 'agonist_antagonist', difficulty: 3, action: 'Eccentric',
       stem: 'During the lowering phase of a biceps curl, which muscle is the agonist and how is it contracting?',
       options: ['Triceps brachii, concentric', 'Biceps brachii, eccentric', 'Triceps brachii, eccentric', 'No agonist: gravity lowers the weight'],
       answer: 1,
@@ -1638,7 +1671,7 @@
       whyWrong: [null, 'The triceps is the antagonist for elbow flexion.', 'The brachioradialis assists elbow flexion (synergist).', 'The gastrocnemius acts at the ankle and knee.'],
     },
     {
-      id: 'aa11', topic: 'agonist_antagonist', difficulty: 3,
+      id: 'aa11', topic: 'agonist_antagonist', difficulty: 3, action: 'Supination',
       stem: 'With the elbow bent, the forearm supinates to turn a doorknob. Which option correctly identifies the agonists and the antagonist?',
       options: ['Agonists: supinator and biceps brachii; antagonist: pronator teres', 'Agonist: pronator teres; antagonist: supinator', 'Agonists: supinator and triceps brachii; antagonist: biceps brachii', 'Agonist: brachialis; antagonist: pronator teres'],
       answer: 0,
@@ -1648,7 +1681,7 @@
 
     // ---------------- muscle_actions ----------------
     {
-      id: 'ma01', topic: 'muscle_actions', difficulty: 1,
+      id: 'ma01', topic: 'muscle_actions', difficulty: 1, action: 'Supination',
       stem: 'Which muscle both flexes the elbow and supinates the forearm?',
       options: ['Triceps brachii', 'Biceps brachii', 'Pronator teres', 'Brachialis'],
       answer: 1,
@@ -1656,7 +1689,7 @@
       whyWrong: ['The triceps brachii extends the elbow.', null, 'The pronator teres pronates the forearm.', 'The brachialis flexes the elbow but cannot supinate.'],
     },
     {
-      id: 'ma02', topic: 'muscle_actions', difficulty: 1,
+      id: 'ma02', topic: 'muscle_actions', difficulty: 1, action: 'Pronation',
       stem: 'Identify the main action of the pronator teres.',
       options: ['Supination of the forearm', 'Pronation of the forearm', 'Elbow extension', 'Shoulder medial rotation'],
       answer: 1,
@@ -1664,7 +1697,7 @@
       whyWrong: ['Supination is done by the supinator and biceps brachii.', null, 'Elbow extension is done by the triceps brachii.', 'Shoulder medial rotation is done by muscles such as the subscapularis.'],
     },
     {
-      id: 'ma03', topic: 'muscle_actions', difficulty: 1,
+      id: 'ma03', topic: 'muscle_actions', difficulty: 1, action: 'Lateral rotation',
       stem: 'What is the main action of the infraspinatus?',
       options: ['Medial rotation of the shoulder', 'Lateral rotation of the shoulder', 'Abduction of the hip', 'Extension of the elbow'],
       answer: 1,
@@ -1672,7 +1705,7 @@
       whyWrong: ['Medial rotation is done by the subscapularis.', null, 'Hip abduction is done by the gluteus medius.', 'Elbow extension is done by the triceps brachii.'],
     },
     {
-      id: 'ma04', topic: 'muscle_actions', difficulty: 1,
+      id: 'ma04', topic: 'muscle_actions', difficulty: 1, action: 'Medial rotation',
       stem: 'Which rotator cuff muscle medially rotates the shoulder?',
       options: ['Infraspinatus', 'Supraspinatus', 'Subscapularis', 'Deltoid (middle)'],
       answer: 2,
@@ -1680,7 +1713,7 @@
       whyWrong: ['The infraspinatus laterally rotates the shoulder.', 'The supraspinatus starts shoulder abduction.', null, 'The deltoid is not a rotator cuff muscle; its middle part abducts.'],
     },
     {
-      id: 'ma05', topic: 'muscle_actions', difficulty: 2,
+      id: 'ma05', topic: 'muscle_actions', difficulty: 2, action: 'Horizontal adduction',
       stem: 'Which muscle is the prime mover for horizontal adduction of the shoulder in a chest fly?',
       options: ['Pectoralis major', 'Latissimus dorsi', 'Posterior deltoid', 'Trapezius'],
       answer: 0,
@@ -1688,7 +1721,7 @@
       whyWrong: [null, 'The latissimus dorsi extends, adducts and medially rotates the shoulder.', 'The posterior deltoid horizontally abducts (the opposite).', 'The trapezius moves the shoulder blade, not the arm across the chest.'],
     },
     {
-      id: 'ma06', topic: 'muscle_actions', difficulty: 2,
+      id: 'ma06', topic: 'muscle_actions', difficulty: 2, action: 'Horizontal abduction',
       stem: 'Which muscle is the prime mover for horizontal abduction of the shoulder in a reverse fly?',
       options: ['Anterior deltoid', 'Pectoralis major', 'Posterior deltoid', 'Biceps brachii'],
       answer: 2,
@@ -1704,7 +1737,7 @@
       whyWrong: ['Hip flexion is done by the iliopsoas.', null, 'These are actions of the rectus femoris (quadriceps).', 'Hip abduction is mainly the gluteus medius; knee flexion is the hamstrings.'],
     },
     {
-      id: 'ma08', topic: 'muscle_actions', difficulty: 1,
+      id: 'ma08', topic: 'muscle_actions', difficulty: 1, action: 'Rotation',
       stem: 'Which muscles mainly rotate the trunk in the transverse plane, for example in a golf swing?',
       options: ['External and internal obliques', 'Iliopsoas', 'Pectoralis major', 'Hamstrings'],
       answer: 0,
@@ -1712,7 +1745,7 @@
       whyWrong: [null, 'The iliopsoas flexes the hip.', 'The pectoralis major acts at the shoulder.', 'The hamstrings flex the knee and extend the hip.'],
     },
     {
-      id: 'ma09', topic: 'muscle_actions', difficulty: 3,
+      id: 'ma09', topic: 'muscle_actions', difficulty: 3, action: 'Rotation',
       stem: 'Which combination of obliques turns the trunk to the LEFT?',
       options: ['Right external oblique and left internal oblique', 'Left external oblique and left internal oblique', 'Right external oblique and right internal oblique', 'Left external oblique and right internal oblique'],
       answer: 0,
@@ -1744,7 +1777,7 @@
       whyWrong: ['The soleus starts below the knee, so it only plantarflexes the ankle.', null, 'The tibialis anterior dorsiflexes the ankle.', 'The quadriceps extend the knee and do not cross the ankle.'],
     },
     {
-      id: 'ma13', topic: 'muscle_actions', difficulty: 3,
+      id: 'ma13', topic: 'muscle_actions', difficulty: 3, action: 'Medial rotation',
       stem: 'In the release of a throw, the shoulder medially rotates. Which group contains ONLY muscles that medially rotate the shoulder?',
       options: ['Subscapularis, pectoralis major, latissimus dorsi', 'Infraspinatus, posterior deltoid, subscapularis', 'Pectoralis major, infraspinatus, supinator', 'Latissimus dorsi, triceps brachii, supraspinatus'],
       answer: 0,
@@ -2121,6 +2154,210 @@
     tendonCapacitor: { name: 'Tendon Capacitor', muscle: 'Tendons', desc: 'Tendons stretch and recoil like springs, storing and returning elastic energy, so your combo holds its charge for longer.' },
   };
 
+  // ---------------------------------------------------------------
+  // DRONE DEFENSE: progression content (read by js/progress.js and
+  // js/transverse.js). Static strings never name an axis.
+  // ---------------------------------------------------------------
+
+  // Movements used for the rescue "which plane?" question. Only names the
+  // tutorials teach; filtered so every entry exists in MOVEMENT_PLANE.
+  const DRONE_RESCUE_MOVES = [
+    'Flexion', 'Extension', 'Dorsiflexion', 'Plantarflexion',
+    'Abduction', 'Adduction', 'Lateral flexion',
+    'Rotation', 'Medial rotation', 'Lateral rotation', 'Horizontal abduction', 'Horizontal adduction', 'Pronation', 'Supination',
+  ].filter((m) => MOVEMENT_PLANE[m]);
+
+  // Movement Codex: one page per Drone Defense action. `name` matches the
+  // DRONE_THREATS `correct` values and MCQ_BANK `action` tags exactly.
+  // plane: null for contraction types. musclesPrime keys into MUSCLES.
+  const CODEX = [
+    {
+      id: 'horizontal_abduction', name: 'Horizontal abduction', plane: 'transverse', joint: 'Shoulder',
+      definition: 'A raised arm swings level, backward and away from the midline.',
+      example: 'The reverse fly in the gym; a backhand frisbee throw.',
+      droneUse: 'A raised arm swats a drone away from the midline, as in the KITE swat and the backhand.',
+      musclesPrime: ['deltoid_posterior', 'infraspinatus'],
+    },
+    {
+      id: 'horizontal_adduction', name: 'Horizontal adduction', plane: 'transverse', joint: 'Shoulder',
+      definition: 'A raised arm swings level, forward and toward the midline, across the chest.',
+      example: 'The chest fly; the forward sweep of a discus throw.',
+      droneUse: 'A raised arm sweeps across the chest to smash a netter or a diver.',
+      musclesPrime: ['pectoralis_major', 'deltoid_anterior'],
+    },
+    {
+      id: 'rotation', name: 'Rotation', plane: 'transverse', joint: 'Spine (trunk)',
+      definition: 'The trunk or head turns around its own long, head-to-toe axis.',
+      example: 'Turning the shoulders away from the target in a golf backswing.',
+      droneUse: 'The trunk turns to face a diver behind you, or sweeps the arm through a midge swarm.',
+      musclesPrime: ['obliques'],
+    },
+    {
+      id: 'medial_rotation', name: 'Medial rotation', plane: 'transverse', joint: 'Shoulder (and hip)',
+      definition: 'A limb turns inward around its own long axis.',
+      example: 'The upper arm snapping inward as a baseball pitch or tennis serve is released.',
+      droneUse: 'With the elbow tucked, the forearm snaps across the belly to fire the disc launcher.',
+      musclesPrime: ['subscapularis', 'pectoralis_major', 'latissimus_dorsi'],
+    },
+    {
+      id: 'lateral_rotation', name: 'Lateral rotation', plane: 'transverse', joint: 'Shoulder and hip',
+      definition: 'A limb turns outward around its own long axis.',
+      example: 'Cocking the throwing arm back; turning the toes out for a side-foot pass.',
+      droneUse: 'The tucked forearm swings out to cock the launcher, and the hip turns the toes onto a Snare.',
+      musclesPrime: ['infraspinatus', 'gluteus_maximus'],
+    },
+    {
+      id: 'pronation', name: 'Pronation', plane: 'transverse', joint: 'Radio-ulnar (forearm)',
+      definition: 'The forearm turns so the palm faces down, or backward when the arm hangs.',
+      example: 'Turning the palm to face the floor to dribble a basketball.',
+      droneUse: 'With the arm hanging, the palm shield turns to face a lancer behind you.',
+      musclesPrime: ['pronator_teres'],
+    },
+    {
+      id: 'supination', name: 'Supination', plane: 'transverse', joint: 'Radio-ulnar (forearm)',
+      definition: 'The forearm turns so the palm faces up, or forward when the arm hangs.',
+      example: 'Turning the palms up to make a cupped, low catch in cricket.',
+      droneUse: 'With the arm hanging, the palm shield turns to face a lancer in front of you.',
+      musclesPrime: ['supinator', 'biceps_brachii'],
+    },
+    {
+      id: 'isometric', name: 'Isometric', plane: null, joint: 'Any joint (in game: shoulder)',
+      definition: 'The muscle makes force without changing length, so the joint stays still.',
+      example: 'Holding a plank; two rugby packs locked still in a scrum.',
+      droneUse: 'The shoulder holds dead still against a Leech tether while BOLT cuts the cable.',
+      musclesPrime: ['subscapularis', 'pectoralis_major'],
+    },
+    {
+      id: 'eccentric', name: 'Eccentric', plane: null, joint: 'Any joint (in game: shoulder)',
+      definition: 'The muscle lengthens while making force, braking or lowering a load under control.',
+      example: 'The quadriceps controlling the knees when landing from a jump.',
+      droneUse: 'The pectoralis major gives way slowly as a Ram shoves the raised arm out and back.',
+      musclesPrime: ['pectoralis_major', 'deltoid_anterior'],
+    },
+    {
+      id: 'concentric', name: 'Concentric', plane: null, joint: 'Any joint (in game: shoulder)',
+      definition: 'The muscle shortens while making force, so the joint moves against the load.',
+      example: 'The biceps lifting the bar in a curl; the quadriceps driving a jump.',
+      droneUse: 'The subscapularis snaps the disc out fast against the pull of the launcher spring.',
+      musclesPrime: ['subscapularis', 'pectoralis_major', 'latissimus_dorsi'],
+    },
+  ];
+
+  // Mastery: an action is MASTERED after `firstTryStreak` first-try correct
+  // answers in a row (freezes or tagged MCQs).
+  const MASTERY = {
+    firstTryStreak: 3,
+    labels: { locked: 'LOCKED', learning: 'LEARNING', mastered: 'MASTERED' },
+    badgeEarned: 'MASTERY BADGE: {action}',
+  };
+
+  // Cosmetic unlocks. unlock.type 'mastery' -> CODEX name; 'boss' -> Warden kills.
+  const COSMETICS = [
+    { id: 'visor_oblique', kind: 'visor', name: 'Oblique Orange', color: '#ff8c42', unlock: { type: 'mastery', action: 'Rotation' } },
+    { id: 'trail_pecsweep', kind: 'trail', name: 'Pec Sweep', color: '#3de0ff', unlock: { type: 'mastery', action: 'Horizontal adduction' } },
+    { id: 'trail_reardelt', kind: 'trail', name: 'Rear Delt Arc', color: '#b48cff', unlock: { type: 'mastery', action: 'Horizontal abduction' } },
+    { id: 'visor_cuff', kind: 'visor', name: 'Cuff Crimson', color: '#ff3d5a', unlock: { type: 'mastery', action: 'Medial rotation' } },
+    { id: 'trail_spring', kind: 'trail', name: 'Cocked Spring', color: '#7dff9a', unlock: { type: 'mastery', action: 'Lateral rotation' } },
+    { id: 'visor_palmdown', kind: 'visor', name: 'Palm-Down Purple', color: '#9b5cff', unlock: { type: 'mastery', action: 'Pronation' } },
+    { id: 'visor_soupbowl', kind: 'visor', name: 'Soup Bowl Gold', color: '#ffd23d', unlock: { type: 'mastery', action: 'Supination' } },
+    { id: 'trail_statue', kind: 'trail', name: 'Statue Shimmer', color: CONTRACTIONS.isometric.color, unlock: { type: 'mastery', action: 'Isometric' } },
+    { id: 'trail_brakelights', kind: 'trail', name: 'Brake Lights', color: CONTRACTIONS.eccentric.color, unlock: { type: 'mastery', action: 'Eccentric' } },
+    { id: 'visor_snapflare', kind: 'visor', name: 'Snap Flare', color: CONTRACTIONS.concentric.color, unlock: { type: 'mastery', action: 'Concentric' } },
+    { id: 'visor_wardenslayer', kind: 'visor', name: 'Warden Slayer', color: '#ffffff', unlock: { type: 'boss', boss: 'warden', count: 1 } },
+    { id: 'trail_wardencomet', kind: 'trail', name: 'Warden Comet', color: '#ff5ef0', unlock: { type: 'boss', boss: 'warden', count: 3 } },
+  ];
+
+  // Optional wave goals. Speed goals always require CORRECT answers.
+  const CONTRACTS = [
+    { id: 'noNet', name: 'Safety Net', desc: 'No ally netted this wave.', scrap: 40 },
+    { id: 'firstTry5', name: 'Sharp Mind', desc: '5 first-try correct answers in a row.', scrap: 50 },
+    { id: 'noTimeout', name: 'No Hesitation', desc: 'Answer every freeze before its timer runs out.', scrap: 30 },
+    { id: 'cleanPlane', name: 'Plane Perfect', desc: 'No wrong-plane answers this wave.', scrap: 40 },
+    { id: 'rescueAll', name: 'Leave No One', desc: 'Free every netted ally before they are dragged off.', scrap: 35 },
+    { id: 'bossFlawless', name: 'Warden Breaker', desc: 'Beat the Warden with no wrong answers.', scrap: 80 },
+    { id: 'quickDraw', name: 'Quick Draw', desc: 'Answer 3 freezes CORRECTLY in under 5 s each.', scrap: 45 },
+    { id: 'contractionAce', name: 'Contraction Ace', desc: 'Get every contraction freeze right on the first try.', scrap: 45 },
+    { id: 'midlineMaster', name: 'Midline Master', desc: 'Get every horizontal swing freeze right on the first try.', scrap: 40 },
+    { id: 'rotatorPro', name: 'Rotator Pro', desc: 'Get every medial or lateral rotation freeze right on the first try.', scrap: 40 },
+    { id: 'palmReader', name: 'Palm Reader', desc: 'Get every pronation or supination freeze right on the first try.', scrap: 40 },
+    { id: 'ironFrame', name: 'Iron Frame', desc: 'Finish the wave without losing an energy cell.', scrap: 50 },
+    { id: 'codexStudy', name: 'Codex Study', desc: 'After a miss, open that action in the Movement Codex.', scrap: 20 },
+  ];
+
+  // Ally levels. Perk units: repairMul = repair-speed multiplier,
+  // healEvery = seconds between heals, turretRate = turret fire-rate
+  // multiplier, warnEarly = extra seconds of warning before a drone side.
+  const ALLY_LEVELS = {
+    mechanic: [
+      { xp: 0, perk: { repairMul: 1.0 }, title: 'Apprentice Wrench', unlockBanter: ['Ready to work. Point me at the broken bits.', 'Keep the drones busy and I will keep the truck busy.'] },
+      { xp: 60, perk: { repairMul: 1.15 }, title: 'Torque Tech', unlockBanter: ['Found a faster way to tighten these bolts!', 'New trick: longer handle, more torque. Physics!'] },
+      { xp: 150, perk: { repairMul: 1.3 }, title: 'Master Mechanic', unlockBanter: ['I can rebuild this engine with my eyes shut.', 'Master Mechanic. Put it on my name badge.'] },
+    ],
+    medic: [
+      { xp: 0, perk: { healEvery: 30 }, title: 'Field Patcher', unlockBanter: ['Medic kit packed. Try to stay in one piece.', 'I will keep your cells topped up.'] },
+      { xp: 60, perk: { healEvery: 24 }, title: 'Cell Surgeon', unlockBanter: ['Faster patches, fewer sparks. You are welcome.', 'New charger rigged. Healing comes quicker now.'] },
+      { xp: 150, perk: { healEvery: 18 }, title: 'Chief Medic', unlockBanter: ['Chief Medic reporting. Nobody shuts down on my watch.', 'I could patch you mid-swat now.'] },
+    ],
+    scout: [
+      { xp: 0, perk: { warnEarly: 2 }, title: 'Lookout', unlockBanter: ['Eyes on the treeline.', 'I will shout when I see lights.'] },
+      { xp: 60, perk: { warnEarly: 3 }, title: 'Pathfinder', unlockBanter: ['Climbed higher. I can see them sooner now.', 'New lens fitted. The forest has no secrets.'] },
+      { xp: 150, perk: { warnEarly: 4 }, title: 'Eagle Eye', unlockBanter: ['I spot drones before they leave the factory.', 'Eagle Eye online. Nothing sneaks up on us now.'] },
+    ],
+    engineer: [
+      { xp: 0, perk: { turretRate: 1.0 }, title: 'Tinkerer', unlockBanter: ['One turret, slightly wobbly. Good enough.', 'If it sparks, that means it works.'] },
+      { xp: 60, perk: { turretRate: 1.2 }, title: 'Turret Smith', unlockBanter: ['Greased the swivel. Faster spin, faster shots.', 'Turret Mk 1.5. Do not ask about Mk 1.4.'] },
+      { xp: 150, perk: { turretRate: 1.4 }, title: 'Chief Engineer', unlockBanter: ['Chief Engineer! The turret salutes you.', 'Full spin, full speed. Drones beware.'] },
+    ],
+  };
+
+  // Session report (js/progress.js). {braces} are filled by the engine.
+  const REPORT_TEXT = {
+    title: 'SESSION REPORT',
+    headings: {
+      summary: 'Summary',
+      actions: 'Actions and mastery',
+      topics: 'Exam topics',
+      confusions: 'Most-confused pairs',
+      contracts: 'Wave contracts',
+      nextSteps: 'What to review next',
+    },
+    labels: {
+      wavesPlayed: 'Waves played',
+      bestWave: 'Best wave',
+      freezeAccuracy: 'Freeze accuracy',
+      firstTry: 'First-try correct',
+      mcqAccuracy: 'Exam terminal accuracy',
+      planeErrors: 'Wrong-plane answers',
+      timeouts: 'Timeouts',
+      timePlayed: 'Time played',
+      mastered: 'Mastered',
+    },
+    confusedPairLine: 'Chose {chosen} when the answer was {correct} (×{n})',
+    noConfusions: 'No repeated mix-ups. Nice work.',
+    assistUsed: 'Assist (practice) mode used',
+    assistYes: 'Yes: some freezes were untimed',
+    assistNo: 'No',
+    copy: 'Copy report',
+    copied: 'Copied!',
+    copyFail: 'Copy failed. Select the text and copy it by hand.',
+    privacy: 'Nothing is uploaded. This report stays on this device until you copy it.',
+    classCodePrompt: 'Class code from your teacher (optional):',
+    classCodePlaceholder: 'e.g. SEHS-11B',
+    namePrompt: 'Your initials (optional):',
+  };
+
+  // Class seed: the same seed gives the same waves and questions.
+  const SEED_TEXT = {
+    prompt: 'Class seed (optional):',
+    placeholder: 'e.g. 11B-WEEK3',
+    help: 'Type the seed your teacher gives you. Everyone with the same seed gets the same waves and questions, so results are fair to compare.',
+    apply: 'Apply seed',
+    clear: 'Clear seed',
+    active: 'Seed: {seed}',
+    none: 'No seed: random waves',
+    invalid: 'Use letters, numbers and dashes only, up to 16 characters.',
+  };
+
   SEHS.content = {
     PLANES,
     MOVEMENT_PLANE,
@@ -2152,5 +2389,14 @@
     REVIEW_CHECKS,
     planeOf,
     planeFailText,
+    PLANE_FAIL_NOTES,
+    DRONE_RESCUE_MOVES,
+    CODEX,
+    MASTERY,
+    COSMETICS,
+    CONTRACTS,
+    ALLY_LEVELS,
+    REPORT_TEXT,
+    SEED_TEXT,
   };
 })();
