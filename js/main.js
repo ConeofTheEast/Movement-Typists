@@ -45,6 +45,7 @@
     hide(id) { $(id).classList.add('hidden'); },
 
     showDecision(d) {
+      if (d.side === 'dd-left' || d.side === 'dd-right') { this.hide('toast'); clearTimeout(this._tt); }
       $('d-title').textContent = d.title + (d.stages > 1 ? `: STEP ${d.stage + 1}/${d.stages}` : '') + (d.reask ? ' · TRY AGAIN' : '');
       $('d-kind').textContent = d.kindText || (d.kind === 'movement' ? 'CHOOSE THE MOVEMENT' : 'CHOOSE THE CONTRACTION');
       $('d-prompt').textContent = d.prompt;
@@ -133,7 +134,7 @@
       const con = C.CONTRACTIONS[s.contraction];
       const pl = C.PLANES.transverse;
       const DU = C.DRONE_UI.card;
-      $('f-head').textContent = info.kind === 'plane' ? DU.planeTitle : info.kind === 'timeout' ? `${DU.timeoutTitle}: ${info.headline}` : info.headline;
+      $('f-head').textContent = info.kind === 'plane' ? DU.planeTitle : info.kind === 'timeout' && info.headline !== DU.timeoutTitle ? `${DU.timeoutTitle}: ${info.headline}` : info.headline;
       $('f-choice').textContent = info.choice + (info.shownAs ? ` (shown as ${info.shownAs})` : '');
       $('f-explain').textContent = info.explain;
       const names = s.agonists.map((id) => (C.MUSCLES[id] ? C.MUSCLES[id].name : id)).join(', ');

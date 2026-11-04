@@ -40,6 +40,7 @@
   const D2R = Math.PI / 180, TAU = Math.PI * 2;
   const TRUCK = { x: 640, y: 628, scale: 1.62 };
   const SPAWN_R = 720;
+  const BASE_CAM = { Z: 1.1, cx: 640, cy: 366, sx: 640, sy: 360 };
   const BASE_FX = {
     freezeBonus: 0, sweepArc: 60, spinDmg: 2, pulseDmg: 1, pulseRadius: 60, swatDmg: 1, swatKnock: 40, windupMul: 1,
     discDmg: 2, discPierce: 0, backhandReach: 0, netCutWindow: 8, turnRate: 1, allySlots: 4, maxEnergy: 5,
@@ -145,11 +146,11 @@
     backhandSwat: { type: 'diver', th: 95, d: 115, joints: ['shoulderR'], key: 'R.hz', side: 'left', limbPt: 'handR' },
     diveBehind: { type: 'diver', th: 165, d: 115, joints: ['trunk'], key: 'trunk', side: 'left', limbPt: 'handR' },
     spineTwist: { type: 'swarm', th: 0, d: 135, arc: [-50, 50], joints: ['trunk'], key: 'trunk', side: 'left', limbPt: 'handR' },
-    palmShield: { type: 'lancer', th: 150, d: 260, joints: ['foreR'], key: 'R.pr', side: 'left', limbPt: 'handR', zoomOn: 'handR' },
-    palmCatch: { type: 'lancer', th: 25, d: 260, joints: ['foreR'], key: 'R.pr', side: 'left', limbPt: 'handR', zoomOn: 'handR' },
-    discWindup: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR' },
-    discThrow: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR' },
-    discSnap: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR', elite: true },
+    palmShield: { type: 'lancer', th: 150, d: 260, joints: ['foreR'], key: 'R.pr', side: 'left', limbPt: 'handR', zoomOn: 'handR', inset: 'handR', insetLabel: 'RIGHT HAND' },
+    palmCatch: { type: 'lancer', th: 25, d: 260, joints: ['foreR'], key: 'R.pr', side: 'left', limbPt: 'handR', zoomOn: 'handR', inset: 'handR', insetLabel: 'RIGHT HAND' },
+    discWindup: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR', inset: 'elbowR', insetLabel: 'RIGHT ARM' },
+    discThrow: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR', inset: 'elbowR', insetLabel: 'RIGHT ARM' },
+    discSnap: { type: 'spotter', th: -15, d: 380, joints: ['shoulderR'], key: 'R.rot', side: 'right', limbPt: 'handR', elite: true, inset: 'elbowR', insetLabel: 'RIGHT ARM' },
     tetherPull: { type: 'tether', th: 95, d: 210, ally: { prefer: 'bolt', side: 'R', at: [125, 150], helper: true }, joints: ['shoulderR'], key: 'R.rot', side: 'left', limbPt: 'wristR' },
     heavyCatch: { type: 'heavy', th: 15, d: 100, joints: ['shoulderR'], key: 'R.hz', side: 'left', limbPt: 'handR' },
     hipPivot: { type: 'crawler', th: 60, d: 70, joints: ['hipR'], key: 'hipR', side: 'left', limbPt: 'toeR', zoomOn: 'feet' },
@@ -306,7 +307,8 @@
       this.windupDone = false;
       // spawn plan
       this.spawnQueue = this.buildSpawnQueue();
-      this.spawnT = 3.5;
+      this.spawnT = 2.5;
+      this.spawned = 0;
       this.nextSpawn = null;
       this.planNextSpawn();
       // allies
@@ -371,7 +373,9 @@
       if (type === 'crawler') th = rand(-120, 120);
       const every = this.spawnQueue.length || this.endless ? this.cfg.every : this.cfg.every * 1.5;
       this.nextSpawn = { type, th, at: this.waveT + this.spawnT };
-      this.spawnT = every * rand(0.8, 1.15);
+      // a quick opening so the camp is busy from the start, then the wave's pace
+      this.spawned = (this.spawned || 0) + 1;
+      this.spawnT = every * rand(0.8, 1.15) * (this.spawned <= 3 ? 0.45 : 1);
     }
 
     // ---------------- allies ----------------
@@ -563,6 +567,7 @@
       if (alive >= 9 + Math.floor(this.wave / 2)) { ns.at += 1.5; return; }
       if (ns.type === 'swarm') this.spawnSwarm(ns.th);
       else this.spawnDrone(ns.type, ns.th);
+      if (ns.type === 'scout' && this.wave >= 2) this.spawnDrone('scout', ns.th + rand(-25, 25)); // gnats come in pairs
       this.planNextSpawn();
     }
 
@@ -822,16 +827,16 @@
       if (!o.noCombo) this.addCombo(1, d.x, d.y);
     }
 
-    addCombo(n, x, y) {
+    addCombo(n, x, y, quiet) {
       const before = this.combo;
       this.combo += n;
       this.comboT = this.eff.comboKeep || 3;
       this.stats.comboBest = Math.max(this.stats.comboBest, this.combo);
       this.ws.comboBest = Math.max(this.ws.comboBest, this.combo);
-      if (this.combo >= 2) this.fx.comboText(x != null ? x : AX, (y != null ? y : AY) - 40, this.combo);
+      if (this.combo >= 2 && !quiet) this.fx.comboText(x != null ? x : AX, (y != null ? y : AY) - 40, this.combo);
       if (Math.floor(this.combo / 5) > Math.floor(before / 5)) {
         this.overdrive = effN(this.eff, 'overdriveTime', 4);
-        this.fx.popText(AX, AY - 120, UI.hud.overdrive, '#ff6a3d', 40);
+        if (!quiet) this.fx.popText(AX, AY - 120, UI.hud.overdrive, '#ff6a3d', 40);
         this.fx.doFlash(0.2, '255,120,60');
         const a = pick(this.allies.filter((q) => this.allyWorking(q)));
         if (a) this.say(a, pick(C.DRONE_BANTER.events.overdrive));
@@ -1032,6 +1037,7 @@
       this.action = null; this.pending = null;
       if (this.rescue) this.closeRescue();
       this.bubbles = [];
+      if (this.fx._dp) this.fx._dp = this.fx._dp.filter((q) => q.t !== 'text'); // no stale pop text over the question
       this.seen[id] = this.time;
       this.mode = 'ramp';
       this.modeT = 0;
@@ -1455,37 +1461,36 @@
       return p;
     }
 
-    // live angle readout (mirrors the sagittal knee-angle overlay)
+    // live angle readout (mirrors the sagittal knee-angle overlay): describes
+    // the joint that actually moved, and says so when it was not the one asked
     makeReadout(F, from, to, choice, kind) {
       const key = F.S.key;
-      const a = TopPose.get(from, key), b = TopPose.get(to, key);
-      let what = '';
       if (F.st.kind === 'contraction') {
-        const c = kind === 'correct' ? F.st.correct : choice || (F.st.timeout.as || 'No contraction');
+        const a = TopPose.get(from, key), b = TopPose.get(to, key);
+        const c = kind === 'correct' ? F.st.correct : kind === 'timeout' ? null : choice;
         const lens = { Isometric: 'length unchanged', Concentric: 'muscle shortens', Eccentric: 'muscle lengthens under tension', Isotonic: 'muscle shortens' };
-        what = `${lens[c] || ''} → ${String(c).toUpperCase()}`;
-      } else if (Math.abs(b - a) < 2) {
-        what = choice ? `the joint angle did not change → ${String(choice).toUpperCase()} missed` : 'no movement';
-      } else if (key.endsWith('.hz')) what = b > a ? `AWAY from the midline → ${mvName('Horizontal abduction')}` : `TOWARD the midline → ${mvName('Horizontal adduction')}`;
-      else if (key.endsWith('.rot')) what = b > a ? `forearm swings OUT → ${mvName('Lateral rotation')}` : `forearm swings IN → ${mvName('Medial rotation')}`;
-      else if (key.endsWith('.pr')) what = b > a ? `palm turns FORWARD → ${mvName('Supination')}` : `palm turns BACKWARD → ${mvName('Pronation')}`;
-      else if (key === 'trunk') what = `${b > a ? 'turns right' : 'turns left'} → ${mvName('Rotation')}`;
-      else if (key === 'hipR') what = b > a ? `toes turn OUT → ${mvName('Lateral rotation')}` : `toes turn IN → ${mvName('Medial rotation')}`;
-      // the readout follows the chosen movement when it moved a different joint
-      if (choice && kind !== 'correct' && F.st.kind === 'movement') {
-        const keyFor = { Rotation: 'trunk' };
-        const k2 = keyFor[choice];
-        if (k2 && k2 !== key) { const a2 = TopPose.get(from, k2), b2 = TopPose.get(to, k2); return { text: `trunk ${Math.round(a2)}° → ${Math.round(b2)}°: ${b2 > a2 ? 'turns right' : 'turns left'} → ${mvName('Rotation')} (the arm did not sweep)`, kind, t: 0 }; }
-        if (/rotation$/.test(choice) && key.endsWith('.hz')) return { text: `arm rolls about its own long axis → ${String(choice).toUpperCase()} (no sweep)`, kind, t: 0 };
-        if ((choice === 'Pronation' || choice === 'Supination') && key.endsWith('.rot')) return { text: `forearm twists → ${choice.toUpperCase()} (no swing)`, kind, t: 0 };
-        if (/rotation$/.test(choice) && key === 'trunk') return { text: `arms roll in place → ${String(choice).toUpperCase()} (the trunk did not turn)`, kind, t: 0 };
-        if (choice === 'Lateral rotation' && key.endsWith('.pr')) return { text: `whole arm rolls outward → ${mvName('Lateral rotation')}`, kind, t: 0 };
-        if (choice === 'Medial rotation' && key.endsWith('.pr')) return { text: `whole arm rolls inward → ${mvName('Medial rotation')}`, kind, t: 0 };
-        if (choice === 'Rotation' && key === 'hipR') return { text: `trunk turns, the feet stay put → ${mvName('Rotation')}`, kind, t: 0 };
+        const lbl = key === 'R.hz' ? 'arm' : 'forearm';
+        return { text: c ? `${lbl} ${Math.round(a)}° → ${Math.round(b)}°: ${lens[c] || ''} → ${String(c).toUpperCase()}` : `${lbl} ${Math.round(a)}° → ${Math.round(b)}°: no controlled contraction: the arm was simply pushed`, kind, t: 0 };
       }
-      const label = key === 'trunk' ? 'trunk' : key === 'hipR' ? 'hip' : key.endsWith('.pr') ? 'forearm' : key.endsWith('.rot') ? 'forearm' : 'arm';
-      return { text: `${label} ${Math.round(a)}° → ${Math.round(b)}°: ${what}`, kind, t: 0 };
+      const keys = ['trunk', 'L.hz', 'R.hz', 'L.rot', 'R.rot', 'L.pr', 'R.pr', 'hipR', 'hipL'];
+      let km = key, best = 0;
+      for (const k of keys) { const dd = Math.abs(TopPose.get(to, k) - TopPose.get(from, k)); if (dd > best + 1) { best = dd; km = k; } }
+      const a = TopPose.get(from, km), b = TopPose.get(to, km);
+      if (best < 2) return { text: `${this.jointWord(key)} ${Math.round(a)}° → ${Math.round(b)}°: no movement`, kind, t: 0 };
+      const raised = /\.rot$/.test(km) && TopPose.get(from, km[0] + '.fl') >= 60;
+      let what;
+      if (km.endsWith('.hz')) what = b > a ? `AWAY from the midline → ${mvName('Horizontal abduction')}` : `TOWARD the midline → ${mvName('Horizontal adduction')}`;
+      else if (raised) what = `the arm rolls about its own long axis → ${b > a ? mvName('Lateral rotation') : mvName('Medial rotation')}`;
+      else if (km.endsWith('.rot')) what = b > a ? `forearm swings OUT → ${mvName('Lateral rotation')}` : `forearm swings IN → ${mvName('Medial rotation')}`;
+      else if (km.endsWith('.pr')) what = b > a ? `palm turns FORWARD → ${mvName('Supination')}` : `palm turns BACKWARD → ${mvName('Pronation')}`;
+      else if (km === 'trunk') what = `${b > a ? 'turns right' : 'turns left'} → ${mvName('Rotation')}`;
+      else what = b > a ? `toes turn OUT → ${mvName('Lateral rotation')}` : `toes turn IN → ${mvName('Medial rotation')}`;
+      let tail = '';
+      if (km !== key) tail = ` (${this.jointWord(key)} did not ${key.endsWith('.hz') ? 'sweep' : 'turn'})`;
+      return { text: `${this.jointWord(km)} ${Math.round(a)}° → ${Math.round(b)}°: ${what}${tail}`, kind, t: 0 };
     }
+
+    jointWord(k) { return k === 'trunk' ? 'trunk' : k.startsWith('hip') ? 'hip' : k.endsWith('.pr') ? 'forearm' : k.endsWith('.rot') ? (k[0] === 'L' ? 'left shoulder' : 'right shoulder') : 'arm'; }
 
     // ---------------- shutdown / NO CREW / wave end ----------------
     startShutdown() {
@@ -1683,9 +1688,9 @@
     updateWarden(d, wdt) {
       const Wd = this.warden;
       if (!Wd) return;
-      if (d.st === 'in') { if (this.moveTo(d, ...polar(0, 300), 70, wdt) < 4) { d.st = 'orbit'; Wd.th = 0; } d.ang = Math.PI / 2; return; }
-      Wd.th += (30 / 300) / D2R * wdt;
-      const p = polar(Wd.th, 300);
+      if (d.st === 'in') { if (this.moveTo(d, ...polar(0, 255), 70, wdt) < 4) { d.st = 'orbit'; Wd.th = 0; } d.ang = Math.PI / 2; return; }
+      Wd.th += (30 / 255) / D2R * wdt;
+      const p = polar(Wd.th, 255);
       d.x = p[0]; d.y = p[1];
       d.ang = Math.atan2(AY - d.y, AX - d.x);
       if (Wd.finale > 0) return;
@@ -1747,9 +1752,10 @@
         this.stats.wardens++;
         this.save.lifetime.wardens = (this.save.lifetime.wardens || 0) + 1;
         this.fx.popText(AX, 170, UI.wave.wardenDown, '#7dff9a', 44);
-        this.allies.forEach((a) => { if (a.state !== 'taken') this.say(a, C.DRONE_BANTER.events.wardenDown[0]); });
+        const cheer = this.allies.find((a) => a.state !== 'taken');
+        if (cheer) this.say(cheer, C.DRONE_BANTER.events.wardenDown[0]);
         this.gainEnergy(1);
-        this.addCombo(5, d.x, d.y);
+        this.addCombo(5, d.x, d.y, true);
         if (this.wardenHum) { try { this.wardenHum.stop(1); } catch (e) { /* ignore */ } this.wardenHum = null; }
       }
     }
@@ -1829,7 +1835,7 @@
       if (dd <= melee && a > 25 && a <= 70) { const s = th < 0 ? 'R' : 'L'; if (free(s)) return { kind: 'cross', side: s, th }; }
       if (dd <= reach && a > 70 && a <= 125) { const s = th > 0 ? 'R' : 'L'; if (free(s)) return { kind: 'backhand', side: s, th }; }
       if (dd <= 160 && a > 125 && free('L') && free('R') && this.snareT <= 0) return { kind: 'spin', side: th > 0 ? 'R' : 'L', th };
-      if (dd > melee * 0.85 && dd <= 460 && a <= 120 && this.snareT <= 0) {
+      if (dd > melee * 0.85 && dd <= 460 && (a <= 120 || dd > 160) && this.snareT <= 0) {
         const s = th >= 0 ? (free('R') ? 'R' : 'L') : (free('L') ? 'L' : 'R');
         if (free(s)) return { kind: 'disc', side: s, th };
       }
@@ -1890,6 +1896,7 @@
       else if (plan.kind === 'stomp') this.cd.hip = 0.9 * od;
       else this.cd[plan.side] = (A.cd || 0.55) * od;
       this.action = { plan, A, t: 0, d, focus, hit: false, l2: false };
+      if (plan.kind === 'disc' && Math.abs(plan.th) > 60 && this.labels) this.floater('head', mvName('Rotation') + ' (TRUNK)', '#bff4ff', 0.8);
       if (this.labels) this.floater(plan.kind === 'stomp' ? 'foot' + plan.side : 'hand' + plan.side, A.label, '#bff4ff', 0.8);
     }
 
@@ -2017,7 +2024,10 @@
 
     floater(part, text, col, life) {
       const p = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, part === 'foot' + 'R' ? 'footR' : part, 1);
-      this.floaters.push({ x: p[0], y: p[1], text, col: col || '#bff4ff', t: 0, life: life || 1.4, part });
+      // stack on top of labels that are still rising nearby
+      let y = p[1];
+      for (const f of this.floaters) if (f.t < 0.6 && Math.abs(f.x - p[0]) < 140 && Math.abs(f.y - y) < 20) y = f.y - 22;
+      this.floaters.push({ x: p[0], y, text, col: col || '#bff4ff', t: 0, life: life || 1.4, part });
     }
 
     // ---------------- input ----------------
@@ -2066,7 +2076,9 @@
       const c = (this.freeze && this.freeze.cam) || this.lastCam || { Z: 1, cx: 640, cy: 360, sx: 640, sy: 360 };
       if (this.freeze && this.freeze.cam) this.lastCam = this.freeze.cam;
       const e = ease(k);
-      return { Z: lerp(1, c.Z, e), cx: lerp(640, c.cx, e), cy: lerp(360, c.cy, e), sx: lerp(640, c.sx, e), sy: lerp(360, c.sy, e) };
+      // real-time camera: a slight zoom on the camp so the rig reads on a projector
+      const B = BASE_CAM;
+      return { Z: lerp(B.Z, c.Z, e), cx: lerp(B.cx, c.cx, e), cy: lerp(B.cy, c.cy, e), sx: lerp(B.sx, c.sx, e), sy: lerp(B.sy, c.sy, e) };
     }
     worldToScreen(x, y) { const c = this.camParams(); return [(x - c.cx) * c.Z + c.sx, (y - c.cy) * c.Z + c.sy]; }
     screenToWorld(x, y) { const c = this.camParams(); return [(x - c.sx) / c.Z + c.cx, (y - c.sy) / c.Z + c.cy]; }
@@ -2209,6 +2221,7 @@
 
       // ---- screen space ----
       this.drawTensionOverlay(ctx, tension);
+      this.drawInset(ctx);
       this.drawChevrons(ctx);
       if (this.readout && (this.mode === 'act' || this.mode === 'replay' || this.mode === 'failed')) this.drawReadout(ctx);
       if (this.mode === 'replay') this.drawReplayTag(ctx);
@@ -2287,10 +2300,7 @@
           this.fx.smokeTrail(pp[0], pp[1], { rate: 0.5, wind: 10 });
         }
       }
-      if (showHl && this.mode === 'decide') {
-        // the jammed-sensors tag for contraction questions
-        if (this.jammed()) this.worldText(ctx, UI.freeze.sensorsJammed, x, y + 78, '#ffc53d', 12);
-      }
+
     }
 
     drawGhost(ctx) {
@@ -2350,8 +2360,8 @@
         ctx.strokeStyle = k > 0.4 ? '#ffb020' : '#ff3040';
         ctx.beginPath(); ctx.arc(a.x, a.y, 34, -Math.PI / 2, -Math.PI / 2 + k * TAU); ctx.stroke();
         ctx.restore();
-        this.worldText(ctx, fill(UI.hud.netted, { s: Math.ceil(a.netT) }), a.x, a.y - 46, '#ffb020', 13);
-        if (this.mode === 'play' && !this.rescue) this.worldText(ctx, 'CLICK or R: CUT FREE', a.x, a.y + 46, '#ffe066', 11);
+        this.worldText(ctx, fill(UI.hud.netted, { s: Math.ceil(a.netT) }), a.x, a.y + 46, '#ffb020', 13);
+        if (this.mode === 'play' && !this.rescue) this.worldText(ctx, 'CLICK or R: CUT FREE', a.x, a.y + 62, '#ffe066', 11);
         if (a.netter && !a.netter.dead) DroneArt.drawTether(ctx, a.netter.x, a.netter.y, a.x, a.y, this.time, 0.7);
       }
       // name + status light
@@ -2389,7 +2399,7 @@
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.arc(d.x, d.y, L, ta - 0.09 + sw, ta + 0.09 + sw); ctx.closePath(); ctx.fill();
         ctx.restore();
-        if (d.staged || d.holdT > 0) this.worldText(ctx, `LOCK ${Math.min(99, Math.round((d.staged ? 0.8 : clamp(d.holdT / 3, 0, 1)) * 100))}%`, d.x + 44, d.y - 18, '#ff5a5a', 12, 'left');
+        if (d.staged || d.holdT > 0) this.worldText(ctx, `LOCK ${Math.min(99, Math.round((d.staged ? 0.8 : clamp(d.holdT / 3, 0, 1)) * 100))}%`, d.x, d.y + d.r + 22, '#ff5a5a', 12);
       }
       if (d.type === 'tether' && (d.st === 'hooked' || d.staged) && !d.cut) {
         const w = AndroidTop.partPoint(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, 'wristR', 1);
@@ -2420,7 +2430,7 @@
       }
       if (d.type === 'warden') this.drawWardenUnder(ctx, d);
       // body
-      const hpFrac = d.maxHp > 1 && d.type !== 'warden' ? d.hp / d.maxHp : null;
+      const hpFrac = d.maxHp > 1 && d.type !== 'warden' && d.hp < d.maxHp && !d.staged ? d.hp / d.maxHp : null;
       const sel = this.selected === d && !this.freeze;
       if (spec.art) DroneArt.draw(ctx, spec.art, d.x, d.y, d.ang, t, { hp: hpFrac, elite: d.elite, hit: d.hit, targeted: sel, reduce, seed: d.seed, scale: spec.scale || 1 });
       if (spec.overlay) this.drawOverlay(ctx, d, spec.overlay);
@@ -2608,10 +2618,11 @@
       const dt = ns.at - this.waveT;
       if (dt > lead || dt < 0) return;
       const sxn = Math.sin(ns.th * D2R), syn = -Math.cos(ns.th * D2R);
+      const [ox, oy] = this.worldToScreen(AX, AY);
       let t = 2000;
-      if (Math.abs(sxn) > 1e-3) t = Math.min(t, ((sxn > 0 ? W - 46 : 46) - AX) / sxn);
-      if (Math.abs(syn) > 1e-3) t = Math.min(t, ((syn > 0 ? H - 46 : 76) - AY) / syn);
-      const x = AX + sxn * t, y = AY + syn * t;
+      if (Math.abs(sxn) > 1e-3) t = Math.min(t, ((sxn > 0 ? W - 46 : 46) - ox) / sxn);
+      if (Math.abs(syn) > 1e-3) t = Math.min(t, ((syn > 0 ? H - 46 : 76) - oy) / syn);
+      const x = ox + sxn * t, y = oy + syn * t;
       Arena.drawSpawnWarning(ctx, x, y, Math.atan2(-syn, -sxn), this.time, { label: DT[ns.type].name, count: ns.type === 'swarm' ? 5 : 1 });
     }
 
@@ -2635,8 +2646,70 @@
         ctx.font = '700 14px ui-monospace, monospace';
         ctx.fillStyle = 'rgba(191,244,255,0.85)';
         ctx.fillText(`⊙ ${C.axisName('transverse').toUpperCase()} points out of the screen`, left ? W - 24 : 24, 114);
+        if (this.jammed()) { ctx.fillStyle = '#ffc53d'; ctx.fillText(`${UI.freeze.sensorsJammed}: muscles shown white`, left ? W - 24 : 24, 136); }
         ctx.restore();
       }
+    }
+
+    // magnifier for threats staged far away (palm shield, disc launcher): the
+    // questioned joint is shown ×3 in a circular inset so it reads on a projector
+    drawInset(ctx) {
+      const F = this.freeze;
+      if (!F || !F.S.inset) return;
+      const m = this.mode;
+      if (!(m === 'decide' || m === 'act' || m === 'replay' || m === 'failed' || (m === 'ramp' && this.modeT > 0.3))) return;
+      const a = m === 'ramp' ? clamp((this.modeT - 0.3) / 0.3, 0, 1) : 1;
+      const pl = this.pl, ax = AX + pl.ox, ay = AY + pl.oy;
+      const foc = AndroidTop.partPoint(pl.pose, ax, ay, F.S.inset, 1);
+      const fx0 = ax * 0.4 + foc[0] * 0.6, fy0 = ay * 0.4 + foc[1] * 0.6;
+      const fs = this.worldToScreen(fx0, fy0), ds = this.worldToScreen(F.drone.x, F.drone.y);
+      const left = F.S.side === 'left';
+      const r = 118, Zi = 3.1;
+      const cands = left ? [[560, 470], [1100, 470], [1100, 230], [560, 230], [830, 560]] : [[180, 330], [720, 470], [720, 230], [450, 560]];
+      let best = cands[0], bs = -1;
+      for (const c of cands) { const sc = Math.min(dist(c[0], c[1], fs[0], fs[1]), dist(c[0], c[1], ds[0], ds[1]) + 40); if (sc > bs) { bs = sc; best = c; } }
+      const [cx, cy] = best;
+      ctx.save();
+      ctx.globalAlpha = a;
+      // connector to the real joint
+      ctx.strokeStyle = 'rgba(143,240,255,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+      const ang = Math.atan2(fs[1] - cy, fs[0] - cx);
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r); ctx.lineTo(fs[0], fs[1]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(fs[0], fs[1], 22, 0, TAU); ctx.stroke();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
+      const bg = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+      bg.addColorStop(0, '#1a2633'); bg.addColorStop(1, '#0a1118');
+      ctx.fillStyle = bg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.strokeStyle = 'rgba(143,240,255,0.06)'; ctx.lineWidth = 1;
+      for (let i = -r; i <= r; i += 24) { ctx.beginPath(); ctx.moveTo(cx + i, cy - r); ctx.lineTo(cx + i, cy + r); ctx.moveTo(cx - r, cy + i); ctx.lineTo(cx + r, cy + i); ctx.stroke(); }
+      ctx.translate(cx, cy); ctx.scale(Zi, Zi); ctx.translate(-fx0, -fy0);
+      // direction of the threat (beam / scanning line), drawn into the inset
+      const dx = F.drone.x - fx0, dy = F.drone.y - fy0, dl = Math.hypot(dx, dy) || 1;
+      ctx.strokeStyle = 'rgba(255,70,70,0.75)'; ctx.lineWidth = 2.2 / Zi * 2; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(fx0 + (dx / dl) * 12, fy0 + (dy / dl) * 12); ctx.lineTo(fx0 + (dx / dl) * 60, fy0 + (dy / dl) * 60); ctx.stroke();
+      ctx.setLineDash([]);
+      const showHl = m === 'decide';
+      this.rig.draw(ctx, pl.pose, ax, ay, { scale: 1, status: pl.status, neutral: this.jammed(), damage: this.damage, reduce: this.fx.reduce, highlight: showHl ? { joints: F.S.joints, arcs: true } : null, malfunction: pl.mal, launcher: F.tOpts.launcher || null });
+      if (this.ghostPose) this.ghostRig.draw(ctx, this.ghostPose, AX, AY, { scale: 1, status: 'ok', reduce: this.fx.reduce });
+      ctx.restore();
+      ctx.strokeStyle = '#8ff0ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+      // label + threat arrow on the rim
+      ctx.font = '800 13px ui-monospace, monospace'; ctx.textAlign = 'center';
+      const lab = `ZOOM ×3 · ${F.S.insetLabel}`;
+      const tw = ctx.measureText(lab).width + 14;
+      ctx.fillStyle = 'rgba(6,12,18,0.92)'; ctx.fillRect(cx - tw / 2, cy - r - 12, tw, 22);
+      ctx.fillStyle = '#8ff0ff'; ctx.textBaseline = 'middle'; ctx.fillText(lab, cx, cy - r - 1);
+      const ta = Math.atan2(dy, dx);
+      const tx = cx + Math.cos(ta) * (r - 4), ty = cy + Math.sin(ta) * (r - 4);
+      ctx.fillStyle = '#ff5a5a';
+      ctx.beginPath(); ctx.moveTo(tx + Math.cos(ta) * 14, ty + Math.sin(ta) * 14); ctx.lineTo(tx + Math.cos(ta + 2.4) * 10, ty + Math.sin(ta + 2.4) * 10); ctx.lineTo(tx + Math.cos(ta - 2.4) * 10, ty + Math.sin(ta - 2.4) * 10); ctx.closePath(); ctx.fill();
+      ctx.font = '800 11px ui-monospace, monospace';
+      ctx.fillStyle = '#ffb3b3';
+      ctx.fillText(DT[F.drone.type].name, cx + Math.cos(ta) * (r + 34), cy + Math.sin(ta) * (r + 26));
+      ctx.restore();
     }
 
     drawReadout(ctx) {
@@ -2666,32 +2739,34 @@
     drawIntro(ctx) {
       const k = this.modeT;
       const a = k < 0.3 ? k / 0.3 : k > 2.1 ? Math.max(0, (2.6 - k) / 0.5) : 1;
+      const BY = 214;
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, H / 2 - 92, W, 170);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, BY - 92, W, 170);
       ctx.textAlign = 'center';
       ctx.font = '900 64px ui-monospace, monospace';
       ctx.fillStyle = this.cfg.boss ? '#ff5a5a' : '#e8f4ff';
-      ctx.fillText(this.cfg.boss ? `WAVE ${this.wave} · ${UI.wave.wardenInbound}` : `WAVE ${this.wave}`, W / 2, H / 2 - 18);
+      ctx.fillText(this.cfg.boss ? `WAVE ${this.wave} · ${UI.wave.wardenInbound}` : `WAVE ${this.wave}`, W / 2, BY - 18);
       ctx.font = '800 24px ui-monospace, monospace';
       ctx.fillStyle = '#ffd27a';
-      ctx.fillText(fill(UI.wave.intro, { n: this.wave, subsystem: this.cfg.sub }).replace(/^WAVE \d+: /, ''), W / 2, H / 2 + 22);
+      ctx.fillText(fill(UI.wave.intro, { n: this.wave, subsystem: this.cfg.sub }).replace(/^WAVE \d+: /, ''), W / 2, BY + 22);
       ctx.font = '600 17px system-ui, sans-serif';
       ctx.fillStyle = '#bcd0de';
-      ctx.fillText(this.introLine + '  ·  Click a drone or press A / D to target, SPACE to strike, R to cut a net.', W / 2, H / 2 + 56);
+      ctx.fillText(this.introLine + '  ·  Click a drone or press A / D to target, SPACE to strike, R to cut a net.', W / 2, BY + 56);
       ctx.restore();
     }
 
     drawClear(ctx) {
       const a = Math.min(1, this.modeT * 2);
+      const BY = 214;
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(0,30,15,0.4)'; ctx.fillRect(0, H / 2 - 70, W, 120);
+      ctx.fillStyle = 'rgba(0,30,15,0.4)'; ctx.fillRect(0, BY - 70, W, 120);
       ctx.textAlign = 'center';
       ctx.font = '900 56px ui-monospace, monospace';
       ctx.fillStyle = '#7dff9a';
-      ctx.fillText(fill(UI.wave.cleared, { subsystem: this.cfg.sub }), W / 2, H / 2 + 6);
-      if (this.newRecord) { ctx.font = '800 20px ui-monospace, monospace'; ctx.fillStyle = '#ffd27a'; ctx.fillText(UI.wave.newRecord, W / 2, H / 2 + 38); }
+      ctx.fillText(fill(UI.wave.cleared, { subsystem: this.cfg.sub }), W / 2, BY + 6);
+      if (this.newRecord) { ctx.font = '800 20px ui-monospace, monospace'; ctx.fillStyle = '#ffd27a'; ctx.fillText(UI.wave.newRecord, W / 2, BY + 38); }
       ctx.restore();
     }
 
@@ -2831,7 +2906,7 @@
           self.allies.forEach((a) => {
             if (a.state === 'taken' || a.state === 'netted') return;
             const d = self.spawnDrone('netter', bearing(a.x, a.y), { at: [a.x + 30, a.y - 30] });
-            d.ally = a; self.netAlly(a, d);
+            d.ally = a; d.hp = d.maxHp = 60; self.netAlly(a, d);
           });
           return self.allies.map((a) => a.state);
         },
@@ -2848,7 +2923,7 @@
           if (!self.cfg.boss) return false;
           if (self.mode === 'intro') { self.mode = 'play'; self.modeT = 0; }
           if (!self.warden) self.spawnWarden();
-          const d = self.warden.d; d.st = 'orbit'; const p = polar(0, 300); d.x = p[0]; d.y = p[1];
+          const d = self.warden.d; d.st = 'orbit'; const p = polar(0, 255); d.x = p[0]; d.y = p[1];
           self.warden.phaseT = 0;
           return true;
         },

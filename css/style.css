@@ -570,7 +570,7 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
 #workshop { position: absolute; inset: 0; z-index: 40; }
 #hud.drone .progress, #hud.drone #hud-stats, #hud.drone #energy { display: none; }
 #hud.drone .hud-top { justify-content: flex-end; top: 0.5em; right: 0.6em; }
-#hud.drone #plane-tag { top: auto; bottom: 12.6em; font-size: 0.82em; }
+#hud.drone #plane-tag { top: auto; bottom: 14.2em; font-size: 0.82em; }
 #decision.dd { left: 1em; right: auto; top: 4.4em; bottom: auto; transform: none; width: 24em; padding: 0.8em 1em 0.8em; animation: rise-l 0.25s ease-out; }
 #decision.dd.dd-right { left: auto; right: 1em; animation: rise-r 0.25s ease-out; }
 @keyframes rise-l { from { transform: translateX(-1em); opacity: 0; } to { transform: none; opacity: 1; } }
