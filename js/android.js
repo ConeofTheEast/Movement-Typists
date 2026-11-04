@@ -17,6 +17,16 @@
  * to bone segments, so they stretch/shorten with the skeleton. Belly
  * width swells in small steps with activation and shortening; colour
  * shows the contraction type (concentric / eccentric / isometric).
+ *
+ * draw(ctx, pose, x, y, opts) options used here:
+ *   neutral, reduce, status, visor, skin, highlight, labels, labelOnly
+ *   damage  { head, torso, armN, armF, legN, legF } values 0..1 (or true),
+ *           or an Array/Set of those names. Damaged parts are drawn charred,
+ *           twitch (glitch jitter, smaller with reduce) and throw sparks.
+ *           draw() returns the rig; rig.sparks = [[x, y], ...] spark points
+ *           emitted this frame (for particles in the FX layer).
+ * Static helpers: Android.rig, lowestRel, handRel, handTopRel, headTopRel,
+ *   partPoint(pose, x, y, part) (see partPoint below for part names).
  */
 (function () {
   'use strict';
@@ -74,6 +84,7 @@
     const u = [Math.sin(ang), Math.cos(ang)];
     return { P, u, n: [Math.cos(ang), -Math.sin(ang)], L, ang, D: [P[0] + u[0] * L, P[1] + u[1] * L] };
   }
+  const HAND_R = 4.6; // fist radius (unscaled), see drawArm
   const SIDE_OFF = { N: { hip: [2, 0], sh: [2, 0] }, F: { hip: [-3, 1], sh: [-4, 1] } };
 
   function rig(p, hx, hy) {
@@ -127,6 +138,39 @@
   }
   function handRel(p, side) {
     return rig(p, 0, 0)[side || 'N'].hand;
+  }
+  // Top edge (smallest y) of the higher fist, relative to the hip origin.
+  // Use this to place a surface the palms press on (e.g. the blast door).
+  function handTopRel(p) {
+    const r = rig(p, 0, 0);
+    return Math.min(r.N.hand[1], r.F.hand[1]) - HAND_R * S;
+  }
+  // World point of a named body part (for partial explosions, sparks, FX).
+  //   part: 'head' | 'torso' (= 'chest') | 'pelvis'
+  //         'armN' | 'armF'  -> hand          'legN' | 'legF' -> mid shank
+  //         'handX' 'elbowX' 'shoulderX' 'upperX' 'foreX'   (X = N or F)
+  //         'hipX' 'thighX' 'kneeX' 'shankX' 'ankleX' 'footX'
+  function partPoint(p, x, y, part) {
+    const r = rig(p, x || 0, y || 0);
+    const side = /[a-z]F$/.test(part) ? 'F' : 'N';
+    const L = r[side];
+    switch (String(part).replace(/([a-z])[NF]$/, '$1')) {
+      case 'head': return r.head.c.slice();
+      case 'torso': case 'chest': return r.tp(2, DIM.torso * 0.6);
+      case 'pelvis': return r.tp(0, 2);
+      case 'arm': case 'hand': return L.hand.slice();
+      case 'fore': return at(L.fore, 0.5, 0);
+      case 'elbow': return L.fore.P.slice();
+      case 'upper': return at(L.upper, 0.5, 0);
+      case 'shoulder': return L.upper.P.slice();
+      case 'hip': return L.thigh.P.slice();
+      case 'thigh': return at(L.thigh, 0.5, 0);
+      case 'knee': return L.shank.P.slice();
+      case 'leg': case 'shank': return at(L.shank, 0.5, 0);
+      case 'ankle': return L.foot.P.slice();
+      case 'foot': return at(L.foot, 0.4, 0);
+      default: return r.tp(2, DIM.torso * 0.6);
+    }
   }
   function headTopRel(p) {
     const r = rig(p, 0, 0);
@@ -185,6 +229,27 @@
   const MODE_COLOR = { c: '#ff6a3d', e: '#4ea8ff', i: '#ffc53d' };
   const MUSCLE_BASE = '#9b2d38';
   const DARK = '#0b0f15';
+  const CHAR = '#2a1a12'; // scorched / charred tint for damaged parts
+  let CHR = 0; // charring (0..1) of the part currently being drawn
+  // Base colour -> charred (if the current part is damaged) -> dimmed (far side)
+  function col(h, dim) {
+    if (CHR) h = mixHex(h, CHAR, 0.72 * CHR);
+    return mix(h, DARK, dim || 0);
+  }
+
+  // ---------------- damage ----------------
+  // opts.damage accepts either
+  //   an object  { head, torso, armN, armF, legN, legF }  with values 0..1 (or true)
+  //   an array / Set of those part names (each counts as 1)
+  const DMG_PARTS = ['head', 'torso', 'armN', 'armF', 'legN', 'legF'];
+  function dmgOf(d, part) {
+    if (!d) return 0;
+    if (Array.isArray(d)) return d.indexOf(part) >= 0 ? 1 : 0;
+    if (typeof d.has === 'function') return d.has(part) ? 1 : 0;
+    const v = d[part];
+    return v === true ? 1 : v > 0 ? Math.min(1, v) : 0;
+  }
+  function hash1(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
 
   // ---------------- sprite skin (optional, see js/sprites.js) ----------------
   // Draws an image part so that its pivot (proximal joint) lands on A and its
@@ -201,7 +266,11 @@
     ctx.rotate(rot);
     const k = ls / li;
     ctx.scale(k, k);
-    if (dim) { ctx.globalAlpha *= 1 - dim * 0.35; ctx.filter = `brightness(${(1 - dim * 0.75).toFixed(2)})`; }
+    if (dim || CHR) {
+      if (dim) ctx.globalAlpha *= 1 - dim * 0.35;
+      const br = (1 - dim * 0.75) * (1 - CHR * 0.6);
+      ctx.filter = `brightness(${br.toFixed(2)})` + (CHR ? ` sepia(${(CHR * 0.7).toFixed(2)})` : '');
+    }
     ctx.drawImage(img, -P[0], -P[1]);
     ctx.restore();
     if (SEHS.Sprites && SEHS.Sprites.debug) {
@@ -260,6 +329,8 @@
     }
 
     // Screen positions of named near-side joints (for FX + highlights)
+    partPoint(p, x, y, part) { return partPoint(p, x, y, part); }
+
     joints(p, x, y) {
       const r = rig(p, x, y);
       const N = r.N;
@@ -276,39 +347,111 @@
       ctx.save();
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
+      r.sparks = [];
+      const dmg = o.damage;
+      const part = (name, fn) => {
+        const d = dmgOf(dmg, name);
+        if (!d) { fn(); return; }
+        this.drawDamaged(ctx, r, name, d, o, fn);
+      };
       // far side (dimmed, behind)
-      this.drawArm(ctx, r, 'F', o, 0.55);
-      this.drawLeg(ctx, r, 'F', o, 0.55);
+      part('armF', () => this.drawArm(ctx, r, 'F', o, 0.55));
+      part('legF', () => this.drawLeg(ctx, r, 'F', o, 0.55));
       // trunk and head
-      this.drawTorso(ctx, r, o);
-      this.drawHead(ctx, r, o);
+      part('torso', () => this.drawTorso(ctx, r, o));
+      part('head', () => this.drawHead(ctx, r, o));
       // near side
-      this.drawLeg(ctx, r, 'N', o, 0);
-      this.drawArm(ctx, r, 'N', o, 0);
+      part('legN', () => this.drawLeg(ctx, r, 'N', o, 0));
+      part('armN', () => this.drawArm(ctx, r, 'N', o, 0));
       if (o.highlight) this.drawHighlights(ctx, r, o.highlight);
       if (o.labels) this.drawLabels(ctx, r, o);
       ctx.restore();
       return r;
     }
 
+    // Damaged part: charred tint, glitch jitter, soot marks and sparks.
+    // Deterministic from this.time (no Math.random), cheap enough per frame.
+    // Spark points (screen coords) are appended to r.sparks for the FX layer.
+    drawDamaged(ctx, r, name, d, o, fn) {
+      const k = DMG_PARTS.indexOf(name) + 1;
+      const t = this.time;
+      const red = !!o.reduce;
+      // glitch bursts: mostly still, occasionally a sharp twitch
+      const burst = hash1(Math.floor(t * 5) + k * 13.7) > (red ? 0.9 : 0.6);
+      const fr = Math.floor(t * 30) + k * 7.3;
+      const amp = (red ? 0.4 : burst ? 3.2 : 0.8) * d;
+      const jx = (hash1(fr) - 0.5) * 2 * amp, jy = (hash1(fr + 0.5) - 0.5) * 2 * amp;
+      ctx.save();
+      ctx.translate(jx, jy);
+      if (burst && !red) ctx.globalAlpha *= 0.75 + 0.25 * hash1(fr + 3.1);
+      CHR = d;
+      fn();
+      CHR = 0;
+      // soot / scorch marks and glowing embers along the part
+      const pts = this.damagePts(r, name);
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const rad = (5 + 4 * hash1(k * 5 + i)) * S * (0.6 + 0.4 * d);
+        const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], rad);
+        g.addColorStop(0, `rgba(12,6,3,${(0.55 * d).toFixed(2)})`);
+        g.addColorStop(1, 'rgba(12,6,3,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, Math.PI * 2); ctx.fill();
+        const ember = red ? 0.6 : 0.45 + 0.55 * hash1(Math.floor(t * 12) + k * 3 + i);
+        ctx.fillStyle = `rgba(255,${110 + Math.round(60 * ember)},40,${(0.75 * d * ember).toFixed(2)})`;
+        ctx.beginPath(); ctx.arc(p[0] + rad * 0.2, p[1] - rad * 0.15, 1.3 * S, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      // sparks: short bright starbursts on some frames
+      const sf = Math.floor(t * (red ? 4 : 14));
+      if (hash1(sf + k * 31) < (red ? 0.25 : 0.55) * d) {
+        const p0 = pts[Math.floor(hash1(sf * 1.7 + k) * pts.length)];
+        const p = [p0[0] + jx, p0[1] + jy];
+        r.sparks.push(p);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ffd27a';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        const n = red ? 3 : 5;
+        for (let i = 0; i < n; i++) {
+          const a = hash1(sf + i * 9.1 + k) * Math.PI * 2;
+          const L = (4 + 7 * hash1(sf + i * 3.3)) * S;
+          ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] + Math.cos(a) * L, p[1] + Math.sin(a) * L);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#fff6d8';
+        ctx.beginPath(); ctx.arc(p[0], p[1], 1.8 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    damagePts(r, name) {
+      if (name === 'head') return [[r.head.c[0] - r.head.r * 0.3, r.head.c[1] - r.head.r * 0.4], [r.head.c[0] + r.head.r * 0.2, r.head.c[1] + r.head.r * 0.4]];
+      if (name === 'torso') return [r.tp(4, 48), r.tp(-4, 34), r.tp(6, 18)];
+      const L = r[name.slice(-1)];
+      if (name[0] === 'a') return [at(L.upper, 0.55, 0), L.fore.P, at(L.fore, 0.6, 0), L.hand];
+      return [at(L.thigh, 0.55, 0), L.shank.P, at(L.shank, 0.55, 0), L.foot.P];
+    }
+
     bone(ctx, a, b, w, dim) {
-      ctx.strokeStyle = mix('#1a2028', DARK, dim);
+      ctx.strokeStyle = col('#1a2028', dim);
       ctx.lineWidth = w + 3;
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-      ctx.strokeStyle = mix('#aab5c0', DARK, dim);
+      ctx.strokeStyle = col('#aab5c0', dim);
       ctx.lineWidth = w;
       ctx.stroke();
-      ctx.strokeStyle = mix('#e3e9ef', DARK, dim);
+      ctx.strokeStyle = col('#e3e9ef', dim);
       ctx.lineWidth = Math.max(1, w * 0.25);
       ctx.stroke();
     }
 
     joint(ctx, c, rad, dim) {
-      ctx.fillStyle = mix('#4c5763', DARK, dim);
+      ctx.fillStyle = col('#4c5763', dim);
       ctx.beginPath(); ctx.arc(c[0], c[1], rad, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = mix('#c7d0d9', DARK, dim);
+      ctx.strokeStyle = col('#c7d0d9', dim);
       ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.fillStyle = mix('#1b222b', DARK, dim);
+      ctx.fillStyle = col('#1b222b', dim);
       ctx.beginPath(); ctx.arc(c[0], c[1], rad * 0.4, 0, Math.PI * 2); ctx.fill();
     }
 
@@ -325,8 +468,8 @@
       this.bone(ctx, L.thigh.P, L.thigh.D, 6.5 * S, dim);
       this.bone(ctx, L.shank.P, L.shank.D, 5.5 * S, dim);
       // foot
-      ctx.fillStyle = mix('#59636e', DARK, dim);
-      ctx.strokeStyle = mix('#1a2028', DARK, dim);
+      ctx.fillStyle = col('#59636e', dim);
+      ctx.strokeStyle = col('#1a2028', dim);
       ctx.lineWidth = 2;
       const f = L.foot, hl = L.heel, toe = L.toe;
       ctx.beginPath();
@@ -357,10 +500,10 @@
       this.bone(ctx, L.fore.P, L.fore.D, 4.2 * S, dim);
       for (const m of ARM_MUSCLES) this.drawMuscle(ctx, m, r, s, o, dim);
       // hand (fist)
-      ctx.fillStyle = mix('#7d8893', DARK, dim);
-      ctx.strokeStyle = mix('#1a2028', DARK, dim);
+      ctx.fillStyle = col('#7d8893', dim);
+      ctx.strokeStyle = col('#1a2028', dim);
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(L.hand[0], L.hand[1], 4.6 * S, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(L.hand[0], L.hand[1], HAND_R * S, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       this.joint(ctx, L.upper.P, 4.6 * S, dim);
       this.joint(ctx, L.fore.P, 3.6 * S, dim);
     }
@@ -374,8 +517,8 @@
         return;
       }
       // pelvis
-      ctx.fillStyle = '#4f5964';
-      ctx.strokeStyle = '#161b22';
+      ctx.fillStyle = col('#4f5964');
+      ctx.strokeStyle = col('#161b22');
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       const pel = [[-13, 4], [9, 7], [12, -6], [3, -12], [-12, -9]];
@@ -384,20 +527,20 @@
       // spine
       for (let d = 6; d < DIM.torso * 0.98; d += 6.5) {
         const c = tp(-7, d);
-        ctx.fillStyle = '#8d98a3';
+        ctx.fillStyle = col('#8d98a3');
         ctx.beginPath(); ctx.arc(c[0], c[1], 2.8 * S, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#1b222b'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.strokeStyle = col('#1b222b'); ctx.lineWidth = 1.2; ctx.stroke();
       }
       // chest shell (translucent)
       ctx.fillStyle = 'rgba(40,55,70,0.75)';
-      ctx.strokeStyle = '#1b222b';
+      ctx.strokeStyle = col('#1b222b');
       ctx.lineWidth = 2;
       ctx.beginPath();
       const shell = [[-8, 26], [6, 24], [11, 36], [11, 52], [6, 58], [-8, 58]];
       shell.forEach((q, i) => { const pt = tp(q[0], q[1]); i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1]); });
       ctx.closePath(); ctx.fill(); ctx.stroke();
       // ribs
-      ctx.strokeStyle = '#9aa5b1';
+      ctx.strokeStyle = col('#9aa5b1');
       ctx.lineWidth = 1.6 * S * 0.7;
       for (let i = 0; i < 5; i++) {
         const d = 30 + i * 5.5;
@@ -417,9 +560,9 @@
       const tu = r.torso.u;
       for (let i = 0; i < 2; i++) {
         const c = [n0[0] + tu[0] * (3 + i * 5) * S, n0[1] + tu[1] * (3 + i * 5) * S];
-        ctx.fillStyle = '#7f8a95';
+        ctx.fillStyle = col('#7f8a95');
         ctx.beginPath(); ctx.arc(c[0], c[1], 3.4 * S, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#1b222b'; ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.strokeStyle = col('#1b222b'); ctx.lineWidth = 1.4; ctx.stroke();
       }
     }
 
@@ -454,17 +597,17 @@
       ctx.rotate(h.ang);
       const R = h.r;
       // skull
-      ctx.fillStyle = '#6b7682';
-      ctx.strokeStyle = '#161b22';
+      ctx.fillStyle = col('#6b7682');
+      ctx.strokeStyle = col('#161b22');
       ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.ellipse(0, 0, R * 0.92, R, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       // jaw
-      ctx.fillStyle = '#56616c';
+      ctx.fillStyle = col('#56616c');
       ctx.beginPath();
       ctx.moveTo(-R * 0.2, R * 0.55); ctx.lineTo(R * 0.85, R * 0.45); ctx.lineTo(R * 0.7, R * 0.95); ctx.lineTo(-R * 0.1, R * 0.95);
       ctx.closePath(); ctx.fill(); ctx.stroke();
       // ear module
-      ctx.fillStyle = '#3d4650';
+      ctx.fillStyle = col('#3d4650');
       ctx.beginPath(); ctx.arc(-R * 0.2, 0, R * 0.32, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       // visor
       const vc = vcol;
@@ -475,13 +618,14 @@
       ctx.save();
       ctx.shadowColor = vc; ctx.shadowBlur = o.reduce ? 0 : 10;
       ctx.fillStyle = vc;
-      const blink = status === 'ok' ? 1 : 0.4 + 0.6 * Math.abs(Math.sin(this.time * 20));
+      let blink = status === 'ok' ? 1 : 0.4 + 0.6 * Math.abs(Math.sin(this.time * 20));
+      if (CHR && !o.reduce) blink *= hash1(Math.floor(this.time * 18)) < 0.3 * CHR ? 0.15 : 1; // damaged visor flickers
       ctx.globalAlpha = blink;
       ctx.beginPath(); ctx.ellipse(R * 0.68, -R * 0.08, R * 0.2, R * 0.13, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillRect(R * 0.3, -R * 0.12, R * 0.62, R * 0.07);
       ctx.restore();
       // antenna
-      ctx.strokeStyle = '#9aa5b1'; ctx.lineWidth = 2;
+      ctx.strokeStyle = col('#9aa5b1'); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-R * 0.3, -R * 0.9); ctx.lineTo(-R * 0.55, -R * 1.45); ctx.stroke();
       ctx.fillStyle = vc;
       ctx.beginPath(); ctx.arc(-R * 0.55, -R * 1.45, 2.5, 0, Math.PI * 2); ctx.fill();
@@ -495,7 +639,7 @@
       const a = [A0[0] + (B0[0] - A0[0]) * m.belly[0], A0[1] + (B0[1] - A0[1]) * m.belly[0]];
       const b = [A0[0] + (B0[0] - A0[0]) * m.belly[1], A0[1] + (B0[1] - A0[1]) * m.belly[1]];
       // tendons
-      ctx.strokeStyle = mix('#e6dccb', DARK, dim);
+      ctx.strokeStyle = col('#e6dccb', dim);
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(A0[0], A0[1]); ctx.lineTo(a[0], a[1]);
@@ -515,6 +659,7 @@
       const c2 = [a[0] + dx * 0.75, a[1] + dy * 0.75];
       const modeCol = o.neutral ? '#dfe6ee' : MODE_COLOR[st.mode] || MODE_COLOR.c;
       let fill = q > 0.01 ? mixHex(MUSCLE_BASE, modeCol, 0.18 + 0.68 * q) : MUSCLE_BASE;
+      if (CHR) fill = mixHex(fill, CHAR, 0.55 * CHR);
       if (dim) fill = mixHex(fill, DARK, dim);
       ctx.save();
       if (!dim && q > 0.24 && !o.reduce) { ctx.shadowColor = modeCol; ctx.shadowBlur = 16 * q; }
@@ -526,7 +671,7 @@
       ctx.fillStyle = fill;
       ctx.fill();
       ctx.restore();
-      ctx.strokeStyle = mix('#3a0e14', DARK, dim);
+      ctx.strokeStyle = col('#3a0e14', dim);
       ctx.lineWidth = 1.2;
       ctx.stroke();
       // striations (muscle fibre direction)
@@ -615,6 +760,9 @@
   Android.lowestRel = lowestRel;
   Android.handRel = handRel;
   Android.headTopRel = headTopRel;
+  Android.handTopRel = handTopRel;
+  Android.partPoint = partPoint;
+  Android.DAMAGE_PARTS = DMG_PARTS;
   Android.MUSCLES = MUSCLES;
   Android.S = S;
 

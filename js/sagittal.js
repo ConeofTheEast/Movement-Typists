@@ -72,6 +72,39 @@
   POSES.reachPrepHold = withMus(POSES.reachPrep, { quadriceps: ['i', 0.4], gluteus_maximus: ['i', 0.35] });
   POSES.holdHang = withMus(POSES.hold, { biceps_brachii: ['i', 0.6], brachialis: ['i', 0.6], latissimus_dorsi: ['i', 0.3] });
 
+  // ---- blast door ----
+  // Feet stay flat when ankle = lean + knee - hip (see doorLegs).
+  const doorLegs = (lean, hip, knee) => [hip, knee, lean + knee - hip];
+  // doorReach / doorHold: under the door, both arms overhead (shoulder 166° from
+  // the trunk, elbows 18°), knees 44°, hips 38°, trunk 6° forward. Both arms use
+  // the same angles so both fists share one top height:
+  //   Android.handTopRel(POSES.doorHold) = y of the fist tops relative to the hip
+  //   (door bottom edge = pl.y + handTopRel). Hand centre: Android.handRel(p)[1].
+  POSES.doorReach = mk({ lean: 6, legs: doorLegs(6, 38, 44), arms: [166, 18], head: -12 });
+  // Isometric hold: same angles, agonists amber (triceps, anterior deltoid push the
+  // door; quadriceps, gluteus maximus hold the half squat; calves stabilise).
+  POSES.doorHold = withMus(POSES.doorReach, {
+    triceps_brachii: ['i', 0.85], deltoid_anterior: ['i', 0.85], quadriceps: ['i', 0.85], gluteus_maximus: ['i', 0.85],
+    gastrocnemius: ['i', 0.4], soleus: ['i', 0.4],
+  });
+  // Concentric end pose (wrong answer): elbows, shoulders, knees and hips extend; agonists shorten.
+  POSES.doorShove = mk({
+    lean: 2, legs: doorLegs(2, 5, 10), arms: [175, 0], head: -18,
+    mus: { triceps_brachii: ['c', 1], deltoid_anterior: ['c', 0.95], quadriceps: ['c', 1], gluteus_maximus: ['c', 0.9] },
+  });
+  // Eccentric end pose (wrong answer): elbows/knees/hips flex under the load while the
+  // extensors stay active and lengthen. Elbows 108° keeps the fists level with the head
+  // top (deeper elbow flexion would put the head above the hands).
+  POSES.doorGive = mk({
+    lean: 28, legs: doorLegs(28, 90, 100), arms: [142, 108], head: 25,
+    mus: { triceps_brachii: ['e', 0.9], deltoid_anterior: ['e', 0.8], quadriceps: ['e', 0.9], gluteus_maximus: ['e', 0.8], soleus: ['e', 0.4] },
+  });
+  // Duck-out after success: low forward dive, arms dropped, far leg driving off the floor.
+  POSES.doorDuck = mk({ lean: 42, legN: [108, 96, 30], legF: [40, 72, 6], armN: [-45, 35], armF: [50, 60], head: -10 });
+  // Failed friend android: kneeling on the far knee (toes tucked behind), near foot flat,
+  // trunk slumped forward, arms hanging, head dropped.
+  POSES.friendKneel = mk({ lean: 34, legN: [122, 86, -2], legF: [34, 112, -8], arms: [22, 28], head: 38 });
+
   function runPose(ph, lean) {
     const leg = (f) => [
       10 + 34 * Math.sin(f),
