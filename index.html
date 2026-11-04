@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kinetic Escape: Planes &amp; Axes</title>
+  <meta name="description" content="SEHS educational game: an anatomically muscled android escapes a factory using correct planes, axes, movements and contraction types.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="1280" height="720" aria-label="Game view"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="progress"><span>START</span><div class="bar"><div id="prog-fill"></div></div><span>EXIT</span></div>
+        <div id="hud-stats"></div>
+        <button id="pause-btn" title="Pause (P)">❚❚</button>
+      </div>
+      <div id="plane-tag"><b>SAGITTAL PLANE</b> · frontal axis ⊙</div>
+      <div id="monitor">
+        <h4>MUSCLE MONITOR</h4>
+        <ul id="monitor-list"></ul>
+        <div class="legend">
+          <span><i class="chip" style="--c:#ff6a3d">C</i>concentric</span>
+          <span><i class="chip" style="--c:#4ea8ff">E</i>eccentric</span>
+          <span><i class="chip" style="--c:#ffc53d">I</i>isometric</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Decision panel -->
+    <div id="decision" class="hidden" role="dialog" aria-live="assertive">
+      <div class="d-row"><div id="d-title"></div><div id="d-kind"></div></div>
+      <div id="d-prompt"></div>
+      <div id="d-options"></div>
+      <div class="d-timer"><div id="d-timer-fill"></div><span id="d-secs"></span></div>
+    </div>
+
+    <div id="toast" class="hidden" aria-live="polite"></div>
+
+    <!-- Menu -->
+    <div id="menu" class="screen">
+      <div class="menu-inner">
+        <div class="kicker">SEHS · ANATOMY &amp; BIOMECHANICS</div>
+        <h1>KINETIC ESCAPE</h1>
+        <p class="sub">Planes, axes, movements &amp; muscle contractions. Pick a test protocol.</p>
+        <div id="levels"></div>
+        <div class="opts">
+          <label><input type="checkbox" id="opt-sound"> Sound (M)</label>
+          <label><input type="checkbox" id="opt-reduce"> Reduce flashing &amp; shake</label>
+          <label><input type="checkbox" id="opt-labels"> Label all muscles (L)</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Briefing -->
+    <div id="briefing" class="screen hidden">
+      <div class="panel brief">
+        <div class="kicker">MISSION BRIEFING · FACTORY ESCAPE</div>
+        <h2>Your screen <em>is</em> the sagittal plane</h2>
+        <div class="brief-grid">
+          <div>
+            <h4>Plane &amp; axis</h4>
+            <p>The <b>sagittal plane</b> divides the body into left and right. You are looking at it side-on. Its axis, the <b>frontal axis</b> ⊙, pokes straight out of the screen through every joint.</p>
+            <p>Only <b>flexion</b> (joint angle decreases) and <b>extension</b> (joint angle increases) happen here. Abduction, adduction and rotation belong to other planes, and the corridor will reject them.</p>
+          </div>
+          <div>
+            <h4>Contractions</h4>
+            <p><span class="chip" style="--c:#ff6a3d">C</span><b>Concentric</b>: the muscle shortens under tension.</p>
+            <p><span class="chip" style="--c:#4ea8ff">E</span><b>Eccentric</b>: the muscle lengthens under tension (braking).</p>
+            <p><span class="chip" style="--c:#ffc53d">I</span><b>Isometric</b>: tension with no change in length.</p>
+            <p class="dim">Muscles swell and glow in these colours as the android moves.</p>
+          </div>
+          <div>
+            <h4>How to play</h4>
+            <p>Time slows as each hazard approaches. Choose with the mouse or keys <kbd>1</kbd>–<kbd>4</kbd> before the timer runs out.</p>
+            <p>Wrong answers make the muscles do exactly what you chose. Failure reboots you at the same hazard.</p>
+            <p class="dim"><kbd>P</kbd> pause · <kbd>L</kbd> muscle labels · <kbd>M</kbd> sound</p>
+          </div>
+        </div>
+        <div class="row">
+          <button id="btn-back" class="ghost">Back</button>
+          <button id="btn-start" class="primary">Begin escape ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fail -->
+    <div id="fail" class="screen hidden">
+      <div class="panel">
+        <div class="kicker red">ANDROID LOST</div>
+        <h2 id="f-head"></h2>
+        <p class="you">You chose: <b id="f-choice"></b></p>
+        <p id="f-explain"></p>
+        <div class="correct"><div class="kicker green">CORRECT RESPONSE</div><p id="f-correct"></p></div>
+        <div class="row">
+          <button id="btn-fail-menu" class="ghost">Menu</button>
+          <button id="btn-retry" class="primary">Reboot at this hazard (R)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Win -->
+    <div id="win" class="screen hidden">
+      <div class="panel">
+        <div class="kicker green">ESCAPE SUCCESSFUL</div>
+        <h2>The android is out of the factory.</h2>
+        <div id="w-stats" class="stats"></div>
+        <div id="w-review"></div>
+        <p class="dim">Next protocol (Transverse · Drone Defense) is paused in development.</p>
+        <div class="row">
+          <button id="btn-win-menu" class="ghost">Menu</button>
+          <button id="btn-again" class="primary">Run a new factory</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <div id="pause" class="screen hidden">
+      <div class="panel">
+        <div class="kicker">PAUSED</div>
+        <h2>Quick reference</h2>
+        <table class="ref">
+          <tr><th>Plane</th><th>Axis</th><th>Divides body into</th><th>Movements</th></tr>
+          <tr><td>Sagittal</td><td>Frontal</td><td>Left / right</td><td>Flexion, extension, dorsiflexion, plantarflexion</td></tr>
+          <tr><td>Frontal</td><td>Sagittal</td><td>Front / back</td><td>Abduction, adduction, lateral flexion, inversion, eversion</td></tr>
+          <tr><td>Transverse</td><td>Longitudinal</td><td>Upper / lower</td><td>Medial &amp; lateral rotation, pronation, supination, horizontal ab/adduction</td></tr>
+        </table>
+        <div class="row">
+          <button id="btn-pause-menu" class="ghost">Quit to menu</button>
+          <button id="btn-resume" class="primary">Resume (P)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/content.js"></script>
+  <script src="js/android.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/sagittal.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
