@@ -38,6 +38,12 @@
   const ease = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rand = (a, b) => a + Math.random() * (b - a);
   const lerp = (a, b, t) => a + (b - a) * t;
+  // joint -> near-side pose key and the distal point that shows its rotation
+  const ROT_KEY = { hip: 'hipN', knee: 'kneeN', ankle: 'ankleN', shoulder: 'shN', elbow: 'elN' };
+  const ROT_CHILD = { hip: 'knee', knee: 'ankle', ankle: 'toe', shoulder: 'elbow', elbow: 'hand' };
+  // hazards whose clearest rotation is on the FAR limb (slide: trailing knee tucks)
+  const ROT_FAR = { laser: { knee: ['kneeF', 'kneeF', 'ankleF'] } };
+  const ROT_SHOW = 2.0; // seconds of each outcome act that show the rotation arcs
   const MAX_ENERGY = 5;
   function shuffle(a) {
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
@@ -57,7 +63,7 @@
     absorb: mk({ lean: 28, legN: [75, 92, 26], legF: [70, 88, 24], arms: [30, 40] }),
     superTuck: mk({ lean: 35, legN: [122, 150, 35], legF: [118, 148, 35], arms: [70, 135], head: 20 }),
     halfCrouch: mk({ lean: 22, legN: [45, 55, 18], legF: [30, 48, 15], armN: [25, 70], armF: [-10, 70] }),
-    slide: mk({ lean: -50, legN: [38, 22, -12], legF: [-22, 118, -20], armN: [-30, 20], armF: [-40, 25], head: 30 }),
+    slide: mk({ lean: -50, legN: [68, 24, -12], legF: [-16, 122, -20], armN: [-30, 20], armF: [-40, 25], head: 30 }),
     tall: mk({ lean: -4, legs: [-3, 0, -28], arms: [165, 5], head: -15 }),
     pushReady: mk({ lean: 22, legN: [45, 42, 15], legF: [-18, 18, 10], arms: [-20, 125] }),
     push: mk({ lean: 28, legN: [40, 30, 5], legF: [-28, 4, -22], arms: [114, 2] }), // arms horizontal: shoulder flexion is measured from the leaning trunk
@@ -328,6 +334,11 @@
       return POSES.stand;
     }
 
+    // Distance covered during a decision. The approach speed is proportional
+    // to the time left (v = 2L/T x remaining fraction), so the android
+    // reaches the hazard exactly as the timer runs out.
+    approachLen() { return this.speed * 0.95; }
+
     buildOptions(st) {
       if (st.options) return shuffle(st.options.slice());
       if (st.kind === 'contraction') return shuffle(['Concentric', 'Eccentric', 'Isometric']);
@@ -353,7 +364,11 @@
       // friends never act out the questioned movement during a freeze
       for (const f of this.friends) if (f.mode === 'jump') { f.mode = 'run'; f.y = 0; f.lx += 40; }
       this.mode = 'decide';
-      this.decision = { ob, st, timer: this.decisionTime, total: this.decisionTime, options, pose: this.anticipation(ob), beat: 0, lastSec: Math.ceil(this.decisionTime), reask: !!o.reask };
+      const trig = ob.triggers[ob.stage];
+      const riding = this.mode === 'ride' || (ob.type === 'zipline' && ob.stage === 1);
+      const runFrom = riding ? null : clonePose(pl.pose);
+      this.decision = { ob, st, timer: this.decisionTime, total: this.decisionTime, options, pose: this.anticipation(ob), beat: 0, lastSec: Math.ceil(this.decisionTime), reask: !!o.reask,
+        trig, x0: this.scrollX, L: Math.max(0, trig - this.scrollX), ride: riding, hangFrom: runFrom ? null : clonePose(pl.pose), chosen: undefined };
       this.game.ui.showDecision({
         title: ob.data.title,
         prompt: st.prompt,
@@ -369,8 +384,11 @@
 
     choose(i) {
       if (this.mode !== 'decide' || !this.decision) return;
-      const opt = this.decision.options[i];
-      if (opt) this.resolve(opt);
+      const d = this.decision;
+      const opt = d.options[i];
+      if (!opt || d.chosen !== undefined) return;
+      if (this.scrollX < d.trig - 1) { d.chosen = opt; this.game.ui.hideDecision(); Audio.select && Audio.select(); return; }
+      this.resolve(opt);
     }
 
     // Fatal per the GAME_DESIGN §2b outcome table. A `fatal` flag in
@@ -386,6 +404,7 @@
 
     resolve(choice) {
       if (this.mode !== 'decide') return;
+      if (this.scrollX < this.decision.trig) this.scrollX = this.decision.trig;
       const { ob, st, reask } = this.decision;
       this.lastTimerFrac = Math.max(0, this.decision.timer / this.decision.total);
       this.game.ui.hideDecision();
@@ -397,6 +416,7 @@
       else if (st.kind === 'movement' && C.planeOf(choice) !== 'sagittal') result = 'plane';
       else result = 'wrong';
       this.stats.log.push({ obstacle: ob.type, stage: ob.stage, kind: st.kind, choice: choice || '(timeout)', correct: st.correct, result, reask });
+      this.rot = result === 'plane' ? null : { joints: (st.joints || []).filter((j) => ROT_KEY[j]), t: 0, s: {}, far: ROT_FAR[ob.type] || {} };
       this.decision = null;
       if (result === 'correct') {
         this.stats.correct++;
@@ -427,6 +447,111 @@
     }
 
     plane() { return C.PLANES.sagittal; }
+
+    // Follows each key joint through the act: the arc starts where the joint
+    // last changed direction, so it always shows the CURRENT rotation.
+    trackRotation(dt) {
+      const R = this.rot;
+      if (!R || !R.joints.length) return;
+      R.t += dt;
+      if (R.t > ROT_SHOW + 0.6) { this.rot = null; return; }
+      const pl = this.pl, J = this.android.joints(pl.pose, pl.x, pl.y);
+      for (const j of R.joints) {
+        const far = R.far[j];
+        const v = pl.pose[far ? far[0] : ROT_KEY[j]];
+        const c = J[far ? far[1] : j], e = J[far ? far[2] : ROT_CHILD[j]];
+        if (v == null || !c || !e) continue;
+        const ang = Math.atan2(e[1] - c[1], e[0] - c[0]);
+        let o = R.s[j];
+        if (!o) { o = R.s[j] = { v0: v, a0: ang, last: v, dir: 0, still: 0, fade: 0 }; }
+        const dv = v - o.last;
+        if (Math.abs(dv) > 0.15) {
+          const dir = Math.sign(dv);
+          if (o.dir && dir !== o.dir && Math.abs(o.last - o.v0) > 4) { o.v0 = o.last; o.a0 = o.ang != null ? o.ang : ang; }
+          o.dir = dir; o.still = 0;
+        } else o.still += dt;
+        o.last = v; o.ang = ang; o.c = c;
+        // keep the BIGGEST rotation of the act on screen (the jump's extension,
+        // not the small tuck after take-off); the arc stays anchored to the joint
+        const cur = { deg: v - o.v0, a0: o.a0, ang };
+        if (!o.best || Math.abs(cur.deg) >= Math.abs(o.best.deg) - 0.5) o.best = cur;
+        o.show = o.best;
+      }
+    }
+
+    drawRotation(ctx) {
+      const R = this.rot;
+      if (!R || this.mode !== 'act' || R.t > ROT_SHOW + 0.6) return;
+      const T = C.JOINT_ROTATION;
+      const alphaAll = R.t < ROT_SHOW ? 1 : Math.max(0, 1 - (R.t - ROT_SHOW) / 0.6);
+      ctx.save();
+      ctx.font = '700 13px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      let li = 0;
+      const used = [];
+      const order = R.joints.slice().sort((a, b) => ((R.s[a] && R.s[a].c ? R.s[a].c[1] : 0) - (R.s[b] && R.s[b].c ? R.s[b].c[1] : 0)));
+      for (const j of order) {
+        const o = R.s[j];
+        if (!o || !o.c) continue;
+        const [cx, cy] = o.c;
+        const B = o.show || { deg: 0, a0: o.a0, ang: o.ang };
+        const deg = B.deg;
+        const moving = Math.abs(deg) > 6;
+        const held = !moving && R.t > 0.45;
+        const a = alphaAll;
+        // glowing joint ring + frontal-axis dot (axis points out of the screen)
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = 'rgba(120,240,255,0.95)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(cx, cy, 13, 0, TAU); ctx.stroke();
+        ctx.fillStyle = '#dffaff';
+        ctx.beginPath(); ctx.arc(cx, cy, 3.2, 0, TAU); ctx.fill();
+        let label;
+        if (moving) {
+          // arc measured from the segment's current direction backwards by the
+          // rotation size, so it follows the limb as the body moves
+          let d = B.ang - B.a0;
+          while (d > Math.PI) d -= TAU;
+          while (d < -Math.PI) d += TAU;
+          const RR = 38;
+          ctx.strokeStyle = 'rgba(255,230,90,0.95)';
+          ctx.shadowColor = 'rgba(255,220,80,0.9)'; ctx.shadowBlur = this.fx.reduce ? 0 : 10;
+          ctx.lineWidth = 5;
+          const st0 = o.ang - d;
+          ctx.beginPath(); ctx.arc(cx, cy, RR, st0, o.ang, d < 0); ctx.stroke();
+          ctx.shadowBlur = 0;
+          // arrowhead at the moving end, pointing along the rotation
+          const ae = o.ang, s = Math.sign(d) || 1;
+          const px = cx + Math.cos(ae) * RR, py = cy + Math.sin(ae) * RR;
+          const tx = -Math.sin(ae) * s, ty = Math.cos(ae) * s;
+          ctx.fillStyle = 'rgba(255,230,90,1)';
+          ctx.beginPath();
+          ctx.moveTo(px + tx * 13, py + ty * 13);
+          ctx.lineTo(px - tx * 2 + Math.cos(ae) * 8, py - ty * 2 + Math.sin(ae) * 8);
+          ctx.lineTo(px - tx * 2 - Math.cos(ae) * 8, py - ty * 2 - Math.sin(ae) * 8);
+          ctx.closePath(); ctx.fill();
+          label = `${T.names[j]} ${deg > 0 ? T.plus[j] : T.minus[j]} ${Math.round(Math.abs(deg))}°`;
+        } else if (held) label = `${T.names[j]} ${T.held}`;
+        if (!label) continue;
+        // label pill to the left of the joint, pushed down so pills never overlap
+        const w = ctx.measureText(label).width + 14;
+        let ly = cy - 8;
+        for (const u of used) if (Math.abs(ly - u) < 26) ly = u + 26;
+        used.push(ly);
+        const lx = cx - 70 - w;
+        ctx.globalAlpha = a * 0.92;
+        ctx.fillStyle = 'rgba(8,14,22,0.85)';
+        ctx.strokeStyle = moving ? 'rgba(255,230,90,0.9)' : 'rgba(120,240,255,0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly - 11, w, 22, 6) : ctx.rect(lx, ly - 11, w, 22); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(lx + w, ly); ctx.lineTo(cx - 14, cy); ctx.stroke();
+        ctx.globalAlpha = a;
+        ctx.fillStyle = moving ? '#ffe86a' : '#bff4ff';
+        ctx.fillText(label, lx + 7, ly);
+        li++;
+      }
+      ctx.restore();
+    }
 
     // Muscles drawn neutral white + monitor "SENSORS JAMMED": during a
     // contraction question, while blending into one (the anticipation pose
@@ -580,15 +705,34 @@
         this.updateTravel(dt);
       } else if (this.mode === 'decide') {
         const d = this.decision;
+        if (d.chosen !== undefined) {
+          // answer locked in: close the remaining distance at run speed, then act
+          const step = this.speed * 0.9 * dt;
+          this.ts = 0.9;
+          if (this.scrollX + step >= d.trig) { this.scrollX = d.trig; this.resolve(d.chosen); return; }
+          this.scrollX += step;
+          this.phase += (step / CYCLE) * TAU;
+          const b = clamp(1 - (d.trig - this.scrollX) / Math.max(1, this.approachLen()), 0, 1);
+          if (!d.ride) { pl.pose = lerpPose(runPose(this.phase), d.pose, ease(b)); pl.pose.mus = d.pose.mus; if (pl.mode !== 'hang') pl.mode = 'ground'; }
+          this.updatePhysics(dt); this.updateWorld(dt); this.android.update(pl.pose, dt);
+          return;
+        }
         d.timer -= dt;
-        this.ts = 0.02;
+        const k = clamp(1 - d.timer / d.total, 0, 1);
+        // creep toward the hazard; speed is proportional to the time left
+        this.scrollX = d.trig - d.L * (1 - k) * (1 - k);
+        const rem = Math.max(0, d.timer / d.total);
+        this.ts = Math.max(0.02, (2 * d.L / Math.max(0.5, d.total)) * rem / this.speed);
         this.blend = 1;
-        const k = 1 - d.timer / d.total;
         // tremble: muscles under tension while frozen
         const trem = (0.6 + 2.2 * k) * (d.ob.type === 'door' ? 0.5 : 1);
         const keys = d.ob.type === 'door' ? ['shN', 'elN', 'shF', 'elF', 'hipN', 'kneeN']
           : d.st.limb === 'legs' ? ['hipN', 'kneeN', 'ankleN', 'hipF', 'kneeF'] : ['shN', 'elN', 'shF', 'elF'];
-        const p = jitterPose(d.pose, trem, keys);
+        let p = jitterPose(d.pose, trem, keys);
+        // still running in slow motion at first, settling into the ready pose
+        const settle = d.L > 0 ? ease(clamp((this.scrollX - d.x0) / d.L * 1.6, 0, 1)) : 1;
+        if (!d.ride && settle < 1) p = lerpPose(runPose(this.phase), p, settle);
+        else if (d.ride && d.hangFrom && settle < 1) p = lerpPose(d.hangFrom, p, settle);
         p.mus = d.pose.mus;
         pl.pose = p;
         if (pl.mode !== 'hang') pl.mode = 'ground';
@@ -602,6 +746,7 @@
       } else if (this.mode === 'act') {
         this.actT += dt;
         this.act.update(this.actT, dt);
+        if (this.mode === 'act') this.trackRotation(dt);
         this.scrollX += this.speed * this.scrollMul * dt;
       } else if (this.mode === 'rewind') {
         this.updateRewind(dt);
@@ -625,11 +770,9 @@
       let ts = 1, blend = 0;
       if (ob && ob.stage < ob.triggers.length) {
         const trig = ob.triggers[ob.stage];
-        const d = trig - this.scrollX;
-        const L = this.speed * 0.95;
-        if (d < L) { const f = clamp(d / L, 0, 1); ts = 0.03 + 0.97 * ease(f); blend = 1 - ease(f); }
-        const move = this.speed * ts * dt;
-        if (this.scrollX + move >= trig) { this.scrollX = trig; this.ts = ts; this.blend = 1; this.enterDecide(ob); }
+        const L = this.approachLen();
+        const move = this.speed * dt;
+        if (this.scrollX + move >= trig - L) { this.scrollX = Math.min(this.scrollX + move, trig); this.ts = 1; this.blend = 0; this.enterDecide(ob); }
         else this.scrollX += move;
       } else {
         this.scrollX += this.speed * dt;
@@ -740,7 +883,7 @@
       let y = lerp(ob.openY, ob.handY, ease(k));
       const pl = this.pl;
       const d = this.decision;
-      if (this.mode === 'decide' && d && d.ob === ob) {
+      if (this.mode === 'decide' && d && d.ob === ob && this.scrollX >= trig - 2) {
         // creeps 1-2 px onto the palms and grinds sparks off them
         const prog = 1 - d.timer / d.total;
         y = ob.handY + 2 * prog;
@@ -783,15 +926,15 @@
       this.doorFriends = [];
       for (let i = 0; i < n; i++) {
         this.doorFriends.push({
-          a: new Android(), x: -70 - i * 210 - rand(0, 40), ph: rand(0, TAU), v: rand(760, 820), saved: false, k: i,
+          a: new Android(), x: -90 - i * 190 - rand(0, 40), gy: GY, hop: null, ph: rand(0, TAU), v: rand(760, 820), saved: false, k: i,
           visor: visors[i % visors.length], unit: this.nextUnit(), pose: runPose(0, 18), y: 0,
         });
       }
     }
 
-    // Door friends run on the BACK CATWALK (lane line, LANE_SCALE) in screen
-    // space, so they read as passing behind the player and under the door,
-    // which spans both levels. Over a catwalk gap they hop it.
+    // Door friends run on the MAIN FLOOR at full size (screen-space x), the
+    // same ground as the player: under the held door, past the player and
+    // off screen right. Over a pit they hop it.
     updateDoorFriends(dt) {
       if (!this.doorFriends.length) return;
       const ob = this.obs[this.cur];
@@ -799,18 +942,19 @@
       for (let i = this.doorFriends.length - 1; i >= 0; i--) {
         const f = this.doorFriends[i];
         f.x += f.v * dt;
-        f.ph += ((f.v * dt) / (CYCLE * LANE_SCALE)) * TAU;
-        const lx = this.scrollX * LANE_P + (f.x - PX);
-        const gx = this.laneGapAt(lx);
-        if (gx != null) {
-          const s = (lx - gx) / LANE_GAP_W;
-          f.y = -55 * Math.sin(Math.PI * clamp(s, 0, 1));
-          f.pose = clonePose(POSES.tuck);
-        } else { f.y = 0; f.pose = runPose(f.ph, 18); }
+        f.ph += ((f.v * dt) / CYCLE) * TAU;
+        const wx = this.scrollX + (f.x - PX);
+        if (f.hop == null && this.groundAt(wx + 70) == null) f.hop = { x0: wx, y0: f.gy != null ? f.gy : GY };
+        if (f.hop) {
+          const s = (wx - f.hop.x0) / 420;
+          const g = this.groundAt(wx);
+          if (s >= 1 && g != null) { f.hop = null; f.gy = g; f.pose = runPose(f.ph, 18); }
+          else { f.gy = f.hop.y0 - 140 * Math.sin(Math.PI * clamp(s, 0, 1)); f.pose = clonePose(POSES.tuck); }
+        } else { const g = this.groundAt(wx); f.gy = g != null ? g : GY; f.pose = runPose(f.ph, 18); }
         if (!f.saved && f.x > doorEnd + 10) {
           f.saved = true;
           this.stats.friendsSaved++;
-          this.addFloater({ x: f.x + 30, y: LANE_Y - 205, t: 0, text: f.unit + ' SAFE', color: '77,255,160' }, 'safe');
+          this.addFloater({ x: f.x + 30, y: GY - 300, t: 0, text: f.unit + ' SAFE', color: '77,255,160' }, 'safe');
         }
         f.a.update(f.pose, dt);
         if (f.x > W + 200) this.doorFriends.splice(i, 1);
@@ -826,7 +970,7 @@
     // out the questioned movement during a freeze (see enterDecide).
     // ======================================================================
     worldTimeScale() {
-      if (this.mode === 'decide') return 0.02;
+      if (this.mode === 'decide') return Math.max(0.02, Math.min(1, this.ts));
       if (this.mode === 'run' || this.mode === 'ride') return this.ts;
       if (this.mode === 'failed') return 0.35;
       return 1;
@@ -969,14 +1113,6 @@
         ctx.scale(k, k);
         const low = Android.lowestRel(r.pose);
         r.a.draw(ctx, r.pose, 0, -low, { status: r.status, visor: r.visor, reduce: true, neutral: this.mode === 'decide', skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
-        ctx.restore();
-      }
-      // door friends escaping under the held blast door (screen-space x)
-      for (const f of this.doorFriends) {
-        ctx.save();
-        ctx.translate(f.x, LANE_Y + f.y);
-        ctx.scale(k, k);
-        f.a.draw(ctx, f.pose, 0, -Android.lowestRel(f.pose), { status: 'ok', visor: f.visor, reduce: true, skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
         ctx.restore();
       }
       this.bgfx.drawWorld(ctx);
@@ -1744,6 +1880,12 @@
         this.drawFrozenLines(ctx, tension);
       }
 
+      // door friends escaping under the held blast door: same floor and size
+      // as the player, drawn just behind it (screen-space x)
+      for (const f of this.doorFriends) {
+        f.a.draw(ctx, f.pose, f.x, f.gy - Android.lowestRel(f.pose), { status: 'ok', visor: f.visor, reduce: true, skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
+      }
+
       if (pl.visible) {
         const d = this.decision;
         const contractionQ = this.jammed();
@@ -1774,6 +1916,7 @@
         }
       }
       if (this.mode !== 'attract') this.drawObstaclesFront(ctx);
+      if (pl.visible) this.drawRotation(ctx);
       fx.drawWorld(ctx);
       this.drawFloaters(ctx);
       ctx.restore();

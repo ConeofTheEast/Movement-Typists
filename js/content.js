@@ -146,6 +146,15 @@
   // Muscles shown on the android (lower + upper limb, phase 1)
   // Attachment geometry lives in android.js and is keyed by these ids.
   // ---------------------------------------------------------------
+  // Live rotation labels drawn at the key joints during each Factory Escape
+  // action (sign convention: flexion / dorsiflexion = +).
+  const JOINT_ROTATION = {
+    names: { hip: 'Hip', knee: 'Knee', ankle: 'Ankle', shoulder: 'Shoulder', elbow: 'Elbow' },
+    plus: { hip: 'flexion', knee: 'flexion', ankle: 'dorsiflexion', shoulder: 'flexion', elbow: 'flexion' },
+    minus: { hip: 'extension', knee: 'extension', ankle: 'plantarflexion', shoulder: 'extension', elbow: 'extension' },
+    held: 'held: no rotation',
+  };
+
   const MUSCLES = {
     // ---- on the android rig (phase 1, sagittal level) ----
     gluteus_maximus: { name: 'Gluteus maximus', region: 'lower limb', where: 'Buttock (back of the hip)', action: 'Hip extension (and lateral rotation)' },
@@ -2400,5 +2409,6 @@
     ALLY_LEVELS,
     REPORT_TEXT,
     SEED_TEXT,
+    JOINT_ROTATION,
   };
 })();
