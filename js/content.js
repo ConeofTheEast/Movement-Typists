@@ -2005,6 +2005,8 @@
   // Never put an axis name here: the engine appends axisName('transverse').
   const DRONE_UI = {
     rescuePrompt: 'Cut the net! Which plane is {movement} in?',
+    rescueAxisPrompt: 'Nearly free! {movement} is in the {plane}. Which axis does it turn about?',
+    rescueAxisWrong: 'Not that axis. Each plane has its own axis at right angles to it. Try again.',
     rescueCorrect: '{name} is free! +1 ENERGY',
     rescueWrong: 'Cutter jammed! {movement} is a {plane} movement. Try again in 2 s.',
     rescueLockout: 'CUTTER JAMMED',
@@ -2294,9 +2296,9 @@
       { xp: 150, perk: { repairMul: 1.3 }, title: 'Master Mechanic', unlockBanter: ['I can rebuild this engine with my eyes shut.', 'Master Mechanic. Put it on my name badge.'] },
     ],
     medic: [
-      { xp: 0, perk: { healEvery: 30 }, title: 'Field Patcher', unlockBanter: ['Medic kit packed. Try to stay in one piece.', 'I will keep your cells topped up.'] },
-      { xp: 60, perk: { healEvery: 24 }, title: 'Cell Surgeon', unlockBanter: ['Faster patches, fewer sparks. You are welcome.', 'New charger rigged. Healing comes quicker now.'] },
-      { xp: 150, perk: { healEvery: 18 }, title: 'Chief Medic', unlockBanter: ['Chief Medic reporting. Nobody shuts down on my watch.', 'I could patch you mid-swat now.'] },
+      { xp: 0, perk: { healEvery: 60 }, title: 'Field Patcher', unlockBanter: ['Medic kit packed. Try to stay in one piece.', 'I will keep your cells topped up.'] },
+      { xp: 60, perk: { healEvery: 48 }, title: 'Cell Surgeon', unlockBanter: ['Faster patches, fewer sparks. You are welcome.', 'New charger rigged. Healing comes quicker now.'] },
+      { xp: 150, perk: { healEvery: 36 }, title: 'Chief Medic', unlockBanter: ['Chief Medic reporting. Nobody shuts down on my watch.', 'I could patch you mid-swat now.'] },
     ],
     scout: [
       { xp: 0, perk: { warnEarly: 2 }, title: 'Lookout', unlockBanter: ['Eyes on the treeline.', 'I will shout when I see lights.'] },

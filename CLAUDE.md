@@ -20,3 +20,9 @@ node tools/playtest.js out <hazards> <choices>
 ```
 
 `<hazards>` is a comma-separated list of `gap`, `laser`, `crate`, `drop` and `zipline`. `<choices>` is a comma-separated list of `correct`, `wrong`, `wrong2`, `plane` and `timeout`. The run must print `no errors`. Look at the screenshots it writes.
+
+Drone Defense (transverse):
+
+```bash
+node tools/playtest-transverse.js out all correct,wrong,plane,timeout
+```

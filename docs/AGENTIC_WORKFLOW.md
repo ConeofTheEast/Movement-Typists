@@ -233,7 +233,7 @@ The last argument is a comma-separated list of choices, one per decision: `corre
 | WP-S2 Sagittal content expansion | next | Ankle hazards (plantarflexion pressure plate, dorsiflexion toe-clearance trip wire), trunk flexion/extension, hyperextension; difficulty modes (timer length, hints on or off) |
 | WP-S3 Teacher tools | next | Export the session log as CSV; a class-code leaderboard (optional); misconception summary per student |
 | **WP-F1 Frontal level** | design (see GAME_DESIGN §5) | Climbing wall with per-limb control, abduction and adduction, palm orientation, scientist shocks, lives |
-| WP-T1 Transverse level | ⏸ **paused** | Placeholder in the menu only. Do not develop until the teacher un-pauses it |
+| WP-T1 Transverse level (Drone Defense) | ✅ playable (teacher un-paused 2026-11-04) | Brief `docs/TRANSVERSE_BRIEF.md`, spec GAME_DESIGN §4. Top-down rig, 14 threat freezes, allies, Warden boss, workshop with 77 SEHS exam MCQs, Fault Log, upgrades + power budget, Codex/mastery, contracts, class seed, teacher report. Built through 3 agent rounds (spec+content → art/rig/FX → engine → QA+pedagogy → fixes) |
 
 ---
 

@@ -16,7 +16,7 @@ To host it for a class, enable **GitHub Pages** on this repo and share the link.
 |---|---|---|
 | Precision Lab | Frontal · sagittal axis | In design |
 | **Factory Escape** | **Sagittal · frontal axis** | **Playable** |
-| Drone Defense | Transverse · longitudinal axis | Paused |
+| **Drone Defense** | **Transverse · longitudinal axis** | **Playable** |
 
 Controls:
 
@@ -35,7 +35,12 @@ Controls:
 | `js/content.js` | All curriculum data and wording: planes, axes, muscles, questions, feedback | sehs-content-specialist |
 | `js/android.js` | Muscled android rig, kinematics and muscle rendering | anatomy-animator |
 | `js/effects.js` | Particles, screen crack, glitch, synthesised audio | vfx-audio |
-| `js/sagittal.js` | Factory Escape level: hazards, outcome animations, rival androids, rendering | game-engineer + level-designer |
+| `js/sagittal.js` | Factory Escape level: hazards (incl. blast door), hybrid energy/damage, friend androids, rendering | game-engineer + level-designer |
+| `js/transverse.js` | Drone Defense level: top-down camp defense, allies, threat freezes, Warden boss | game-engineer + level-designer |
+| `js/android_top.js` | Top-down muscled android rig (transverse actions) | anatomy-animator |
+| `js/drones.js` | Drone, arena and transport art, drone FX and sounds | vfx-audio |
+| `js/workshop.js` | Workshop: SEHS exam terminal (MCQs), Fault Log, upgrades, power-budget loadout, calibration, saves | game-engineer |
+| `js/progress.js` | Movement Codex, mastery badges, cosmetics, ally levels, wave contracts, class seed, teacher session report | game-engineer |
 | `js/tutorial.js`, `js/diagrams.js` | Tutorial and review section with animated demos; plane diagrams | game-engineer + sehs-content-specialist |
 | `review-sheet.html` | Printable review sheet with answer key, generated from `content.js` | sehs-content-specialist |
 | `js/sprites.js`, `assets/sprites/` | Optional sprite skin for the android (disabled until images are added) | art-director |
@@ -56,4 +61,12 @@ node tools/playtest.js out gap,laser,crate,drop,zipline correct
 
 ```bash
 node tools/playtest.js out gap plane
+```
+
+```bash
+node tools/playtest-transverse.js out all correct,wrong,plane,timeout
+```
+
+```bash
+node tools/playtest-transverse.js out waves correct --waves 3 --workshop
 ```

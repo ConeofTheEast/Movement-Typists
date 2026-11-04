@@ -1136,6 +1136,7 @@
     const ctx = cv.getContext && cv.getContext('2d');
     if (!ctx) return;
     try {
+      if (SEHS.DroneDefense && typeof SEHS.DroneDefense.drawIcon === 'function' && SEHS.DroneDefense.drawIcon(cv, type)) return;
       const A = SEHS.DroneArt;
       if (A && typeof A.draw === 'function') {
         const r = (typeof A.radius === 'function' && A.radius(type)) || 20;
