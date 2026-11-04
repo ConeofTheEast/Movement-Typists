@@ -151,6 +151,7 @@
       this.phase = 0;
       this.energy = MAX_ENERGY;
       this.damage = {};
+      this.unitPool = [];
       this.measure();
       this.stats = {
         correct: 0, decisions: 0, streak: 0, best: 0, plane: 0, wrongSagittal: 0, contraction: 0, timeout: 0, reboots: 0,
@@ -485,22 +486,37 @@
     }
 
     gainEnergy() {
-      this.energy = Math.min(MAX_ENERGY, this.energy + 1);
       const c = this.jointPos('chest');
+      if (this.energy >= MAX_ENERGY) {
+        this.floaters.push({ x: c[0], y: c[1] - 90, t: 0, text: 'ENERGY FULL', color: '170,200,215', subtle: true });
+        return;
+      }
+      this.energy += 1;
       this.fx.energyGain(c[0], c[1] - 20);
       Audio.energyUp();
-      this.floaters.push({ x: c[0], y: c[1] - 90, t: 0, text: '+1 ENERGY', color: '86,224,255' });
+      this.floaters.push({ x: c[0], y: c[1] - 90, t: 0, text: '+1 ENERGY', color: '77,255,160' });
     }
 
     // Non-fatal hit on one body part: partial explosion there, the part stays
     // damaged until a checkpoint reboot, and one energy cell is lost.
+    // Returns false if this hit took the LAST cell: then there is no
+    // explosion at all and the shutdown (power-down) starts right away (§2b).
     partialHit(parts, at, power) {
       const pl = this.pl;
+      if (this.energy <= 1) {
+        parts.forEach((p) => { this.damage[p] = 1; });
+        this.loseEnergy();
+        if (this.failInfo) this.failInfo.shutdown = true;
+        this.stats.shutdowns++;
+        this.startAct(this.actShutdown());
+        return false;
+      }
       const pt = Android.partPoint(pl.pose, pl.x, pl.y, at);
       this.fx.partialExplosion(pt[0], pt[1], power || 0.5, { dir: -1 });
       Audio.pop();
       parts.forEach((p) => { this.damage[p] = 1; });
       this.loseEnergy();
+      return true;
     }
 
     // ---- rewind: 0.5 s VHS rewind, then the same question again ----
@@ -768,11 +784,14 @@
       for (let i = 0; i < n; i++) {
         this.doorFriends.push({
           a: new Android(), x: -70 - i * 210 - rand(0, 40), ph: rand(0, TAU), v: rand(760, 820), saved: false, k: i,
-          visor: visors[i % visors.length], unit: 'UNIT-' + String(Math.floor(rand(2, 98))).padStart(2, '0'), pose: runPose(0, 18),
+          visor: visors[i % visors.length], unit: this.nextUnit(), pose: runPose(0, 18), y: 0,
         });
       }
     }
 
+    // Door friends run on the BACK CATWALK (lane line, LANE_SCALE) in screen
+    // space, so they read as passing behind the player and under the door,
+    // which spans both levels. Over a catwalk gap they hop it.
     updateDoorFriends(dt) {
       if (!this.doorFriends.length) return;
       const ob = this.obs[this.cur];
@@ -780,12 +799,18 @@
       for (let i = this.doorFriends.length - 1; i >= 0; i--) {
         const f = this.doorFriends[i];
         f.x += f.v * dt;
-        f.ph += ((f.v * dt) / (CYCLE * 0.85)) * TAU;
-        f.pose = runPose(f.ph, 18);
+        f.ph += ((f.v * dt) / (CYCLE * LANE_SCALE)) * TAU;
+        const lx = this.scrollX * LANE_P + (f.x - PX);
+        const gx = this.laneGapAt(lx);
+        if (gx != null) {
+          const s = (lx - gx) / LANE_GAP_W;
+          f.y = -55 * Math.sin(Math.PI * clamp(s, 0, 1));
+          f.pose = clonePose(POSES.tuck);
+        } else { f.y = 0; f.pose = runPose(f.ph, 18); }
         if (!f.saved && f.x > doorEnd + 10) {
           f.saved = true;
           this.stats.friendsSaved++;
-          this.floaters.push({ x: f.x + 40, y: GY - 300 + (f.k % 2) * 22, t: 0, text: f.unit + ' SAFE', color: '77,255,160' });
+          this.addFloater({ x: f.x + 30, y: LANE_Y - 205, t: 0, text: f.unit + ' SAFE', color: '77,255,160' }, 'safe');
         }
         f.a.update(f.pose, dt);
         if (f.x > W + 200) this.doorFriends.splice(i, 1);
@@ -830,9 +855,29 @@
         a: new Android(), lx, v: fromLeft ? base + rand(80, 190) : base - rand(70, 130),
         ph: Math.random() * TAU, mode: 'run', t: 0, y: 0,
         visor: visors[Math.floor(Math.random() * visors.length)],
-        unit: 'UNIT-' + String(Math.floor(rand(2, 98))).padStart(2, '0'),
+        unit: this.nextUnit(),
         skill: rand(0.55, 0.9), status: 'ok', pose: runPose(0),
       });
+    }
+
+    // Unit IDs are unique per run: one shuffled pool shared by lane friends
+    // and door friends (refilled only if a very long run exhausts it).
+    nextUnit() {
+      if (!this.unitPool.length) { for (let i = 2; i <= 98; i++) this.unitPool.push(i); shuffle(this.unitPool); }
+      return 'UNIT-' + String(this.unitPool.pop()).padStart(2, '0');
+    }
+
+    // Floaters queue up: each one starts at least 0.45 s after the previous
+    // one with the same tag, and alternates between three heights.
+    addFloater(f, tag) {
+      const q = (this.floatQ = this.floatQ || {});
+      const slot = q[tag] || { at: -1, n: 0 };
+      const delay = Math.max(0, slot.at + 0.45 - this.time);
+      slot.at = this.time + delay; slot.n++;
+      q[tag] = slot;
+      f.t = -delay;
+      f.y -= ((slot.n - 1) % 3) * 22;
+      this.floaters.push(f);
     }
 
     // Start a stumble: trip, red light, floater, then kneel and stay put.
@@ -841,7 +886,7 @@
       const x = this.laneSX(r.lx);
       if (x > -40 && x < W + 40) {
         Audio.stumble();
-        this.floaters.push({ x, y: LANE_Y - 150 * LANE_SCALE, t: 0, text: r.unit + ' DOWN', color: '255,90,90' });
+        this.addFloater({ x, y: LANE_Y - 150 * LANE_SCALE, t: 0, text: r.unit + ' DOWN', color: '255,90,90' }, 'down');
         this.bgfx.dust(x, LANE_Y, 5);
       }
     }
@@ -849,12 +894,16 @@
     updateFriends(dt) {
       const wdt = dt * this.worldTimeScale();
       this.bgfx.update(wdt);
-      for (let i = this.floaters.length - 1; i >= 0; i--) { const f = this.floaters[i]; f.t += dt; f.y -= 18 * dt; if (f.t > 2.2) this.floaters.splice(i, 1); }
+      for (let i = this.floaters.length - 1; i >= 0; i--) { const f = this.floaters[i]; f.t += dt; if (f.t > 0) f.y -= 18 * dt; if (f.t > 2.2) this.floaters.splice(i, 1); }
       if (this.mode !== 'decide' && this.mode !== 'won') {
         this.friendT -= wdt;
         if (this.friendT <= 0 && this.friends.length < 3) { this.spawnFriend(); this.friendT = rand(4, 9); }
       }
       const k = LANE_SCALE;
+      // no stumbles during a freeze, or around the blast door (question, hold, duck-out)
+      const cob = this.obs && this.obs[this.cur];
+      const noStumble = this.mode === 'decide' || this.doorFriends.length > 0 ||
+        (cob && cob.type === 'door' && (this.mode === 'act' || this.blend > 0));
       for (let i = this.friends.length - 1; i >= 0; i--) {
         const r = this.friends[i];
         r.t += wdt;
@@ -865,9 +914,9 @@
           r.y = 0;
           const g = this.nextLaneGap(r.lx);
           if (g - r.lx < 40) {
-            if (Math.random() < r.skill) { r.mode = 'jump'; r.t = 0; r.T = (LANE_GAP_W + 90) / r.v; }
+            if (noStumble || Math.random() < r.skill) { r.mode = 'jump'; r.t = 0; r.T = (LANE_GAP_W + 90) / r.v; }
             else { r.lx = Math.min(r.lx, g - 26); this.friendDown(r); } // trips at the edge, never falls in
-          } else if (this.mode !== 'decide' && Math.random() < 0.0004 * wdt * 60) this.friendDown(r);
+          } else if (!noStumble && Math.random() < 0.0004 * wdt * 60) this.friendDown(r);
         } else if (r.mode === 'jump') {
           r.lx += r.v * wdt;
           const s = Math.min(1, r.t / r.T);
@@ -922,6 +971,14 @@
         r.a.draw(ctx, r.pose, 0, -low, { status: r.status, visor: r.visor, reduce: true, neutral: this.mode === 'decide', skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
         ctx.restore();
       }
+      // door friends escaping under the held blast door (screen-space x)
+      for (const f of this.doorFriends) {
+        ctx.save();
+        ctx.translate(f.x, LANE_Y + f.y);
+        ctx.scale(k, k);
+        f.a.draw(ctx, f.pose, 0, -Android.lowestRel(f.pose), { status: 'ok', visor: f.visor, reduce: true, skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
+        ctx.restore();
+      }
       this.bgfx.drawWorld(ctx);
       // depth haze over the whole back lane
       const hz = ctx.createLinearGradient(0, LANE_Y - 200, 0, LANE_Y + 40);
@@ -938,44 +995,14 @@
       ctx.font = '700 13px ui-monospace, monospace';
       ctx.textAlign = 'center';
       for (const f of this.floaters) {
-        const a = Math.max(0, 1 - f.t / 2.2);
+        if (f.t < 0) continue; // queued
+        const a = Math.max(0, 1 - f.t / 2.2) * (f.subtle ? 0.6 : 1);
+        ctx.font = f.subtle ? '600 11px ui-monospace, monospace' : '700 13px ui-monospace, monospace';
         ctx.fillStyle = `rgba(0,0,0,${0.5 * a})`;
         ctx.fillText(f.text, f.x + 1, f.y + 1);
         ctx.fillStyle = `rgba(${f.color || '255,90,90'},${a})`;
         ctx.fillText(f.text, f.x, f.y);
       }
-      ctx.restore();
-    }
-
-    // Drawn smaller and hazed (they run behind the player) so the player's
-    // amber isometric hold stays the clear focus. Rendered to an offscreen
-    // layer and tinted with source-atop (canvas filters are too slow on
-    // Chromebooks).
-    drawDoorFriends(ctx) {
-      if (!this.doorFriends.length) return;
-      const cv = ctx.canvas;
-      const off = this.friendLayer || (this.friendLayer = document.createElement('canvas'));
-      if (off.width !== cv.width || off.height !== cv.height) { off.width = cv.width; off.height = cv.height; }
-      const o = off.getContext('2d');
-      o.setTransform(1, 0, 0, 1, 0, 0);
-      o.clearRect(0, 0, off.width, off.height);
-      o.setTransform(ctx.getTransform());
-      const k = 0.76;
-      for (const f of this.doorFriends) {
-        o.save();
-        o.translate(f.x, GY - 4);
-        o.scale(k, k);
-        f.a.draw(o, f.pose, 0, -Android.lowestRel(f.pose), { status: 'ok', visor: f.visor, reduce: true, skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null });
-        o.restore();
-      }
-      o.setTransform(1, 0, 0, 1, 0, 0);
-      o.globalCompositeOperation = 'source-atop';
-      o.fillStyle = 'rgba(14,24,36,0.5)';
-      o.fillRect(0, 0, off.width, off.height);
-      o.globalCompositeOperation = 'source-over';
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(off, 0, 0);
       ctx.restore();
     }
 
@@ -1292,7 +1319,7 @@
             pl.onLand = () => {
               phase = 2; tBounce = self.actT; Audio.crunch(); self.fx.addShake(10); pl.status = 'fail';
               const f = self.jointPos('ankle'); self.fx.sparks(f[0], f[1], 30);
-              self.partialHit(['legN', 'legF'], 'ankleN', 0.5);
+              if (!self.partialHit(['legN', 'legF'], 'ankleN', 0.5)) return; // last cell: shutdown instead
               pl.mode = 'air'; pl.vy = -360;
               pl.onLand = () => { phase = 3; tSeat = self.actT; Audio.thud(); self.fx.addShake(5); const c = self.jointPos('hip'); self.fx.dust(c[0], c[1] + 20, 10); };
             };
@@ -1436,7 +1463,7 @@
               pl.pose = jitterPose(pl.pose, 4); pl.pose.mus = ECC;
               sT -= dt;
               if (sT <= 0) { sT = 0.05; const f = self.jointPos('toe'); self.fx.sparks(f[0], ob.grinderTop, 8, { dir: -Math.PI / 2, spread: 1.3, vmax: 600 }); self.fx.addShake(4); Audio.grind(); }
-              if (t - grind > 0.6) { hit = t; from = clonePose(pl.pose); self.partialHit(['legN', 'legF'], 'ankleN', 0.5); Audio.clank(); }
+              if (t - grind > 0.6) { hit = t; from = clonePose(pl.pose); if (self.partialHit(['legN', 'legF'], 'ankleN', 0.5)) Audio.clank(); }
             }
             return;
           }
@@ -1598,6 +1625,8 @@
       const hanging = pl.mode === 'hang';
       const limp = hanging ? POSES.lowered : POSES.slump;
       let done = false;
+      pl.onLand = null; pl.onFall = null; pl.g = null; pl.vy = 0;
+      if (!hanging) pl.mode = 'ground';
       this.fx.glitch = 0;
       this.sysFail = 0;
       this.fx.shutdown(1.4);
@@ -1702,7 +1731,6 @@
       if (this.mode !== 'attract') this.drawPits(ctx);
       this.drawFloor(ctx);
       if (this.mode !== 'attract') { this.drawObstaclesBack(ctx); this.drawExit(ctx); }
-      this.drawDoorFriends(ctx);
 
       // drain colour from the world while time is frozen (android stays vivid)
       if (tension > 0.05) {
@@ -1720,15 +1748,30 @@
         const d = this.decision;
         const contractionQ = this.jammed();
         const hl = this.mode === 'decide' && d ? { joints: d.st.joints } : null;
-        this.android.draw(ctx, pl.pose, pl.x, pl.y, {
+        // Door freeze: arms overhead cross the head in side view, so the head is
+        // redrawn on top and the joint rings go over it at reduced alpha.
+        const dob = this.obs[this.cur];
+        const headUp = !!(hl && d.ob.type === 'door') || (this.mode === 'act' && dob && dob.type === 'door' && !dob.falling);
+        const dopts = {
           status: pl.status,
-          highlight: hl,
+          highlight: headUp ? null : hl,
           labels: opts.labels ? 'all' : null,
           neutral: contractionQ,
           damage: this.damage,
           reduce: fx.reduce,
           skin: SEHS.Sprites ? SEHS.Sprites.get('sagittal') : null,
-        });
+        };
+        const rig = this.android.draw(ctx, pl.pose, pl.x, pl.y, dopts);
+        if (headUp) {
+          const A = this.android;
+          ctx.save();
+          ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+          if (this.damage.head) A.drawDamaged(ctx, rig, 'head', 1, dopts, () => A.drawHead(ctx, rig, dopts));
+          else A.drawHead(ctx, rig, dopts);
+          ctx.globalAlpha = 0.55;
+          if (hl) A.drawHighlights(ctx, rig, hl);
+          ctx.restore();
+        }
       }
       if (this.mode !== 'attract') this.drawObstaclesFront(ctx);
       fx.drawWorld(ctx);
@@ -1951,7 +1994,11 @@
         ctx.restore();
         ctx.fillStyle = '#f5c400';
         ctx.font = '700 15px system-ui, sans-serif';
-        ctx.fillText('⚠ DROP', x - 90, GY - ob.h - 70);
+        // label hangs on the cliff face (below the ledge top), clear of the android's legs
+        ctx.fillStyle = 'rgba(10,14,20,0.75)';
+        ctx.fillRect(x + 6, GY - ob.h + 26, 84, 24);
+        ctx.fillStyle = '#f5c400';
+        ctx.fillText('⚠ DROP', x + 12, GY - ob.h + 44);
       }
     }
 
