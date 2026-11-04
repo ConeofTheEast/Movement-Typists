@@ -60,9 +60,9 @@
     shX: 42, // shoulder joint centre, half-width
     upper: 29, fore: 26, hand: 10,
     ribW: 27, ribD: 16, // ribcage half-width / half-depth
-    pelW: 24, pelD: 13, pelZ: -46,
+    pelW: 21, pelD: 11, pelZ: -46,
     hipX: 11, kneeZ: -74, ankleZ: -100, foot: 24, heel: 6,
-    headR: 13, headZ: 16, headY: 2,
+    headR: 11, headZ: 16, headY: 2,
   };
   const PERSP = 0.0016; // perspective: k(z) = 1 + z * PERSP
 
@@ -73,7 +73,7 @@
     'shElevR', 'shHAbdR', 'shRotR', 'elR', 'foreR',
     'hipRotL', 'hipRotR'];
   const BASE = {
-    facing: 0, trunk: 0, head: 0, slump: 0, stance: 24,
+    facing: 0, trunk: 0, head: 0, slump: 0, stance: 21,
     shElevL: 20, shHAbdL: 0, shRotL: 0, elL: 20, foreL: 0,
     shElevR: 20, shHAbdR: 0, shRotR: 0, elR: 20, foreR: 0,
     hipRotL: 0, hipRotR: 0,
@@ -119,7 +119,7 @@
   // lateral(+)/medial(-) rotation, elbow flexion, supination(+)/pronation(-)]
   const GUARD = [24, -12, -18, 112, -25];
   const LIB = {
-    idle: mk({ arms: GUARD, hipRot: 6, stance: 26 }),
+    idle: mk({ arms: GUARD, hipRot: 6, stance: 22 }),
     // horizontal ADDUCTION swat (right arm sweeps across the chest; pec major)
     crossSwatPrep: mk({ trunk: -28, armR: [90, 75, 0, 18, 0], armL: GUARD, stance: 28 }),
     crossSwat: mk({ trunk: 24, armR: [90, -38, 0, 12, 0], armL: GUARD, stance: 28 }),
@@ -130,8 +130,8 @@
     twistL: mk({ trunk: 45, head: 8, arms: GUARD, stance: 28 }),
     twistR: mk({ trunk: -45, head: -8, arms: GUARD, stance: 28 }),
     // shoulder LATERAL rotation wind-up, then MEDIAL rotation throw (right)
-    windup: mk({ trunk: -14, armR: [12, 10, 75, 90, 10], armL: GUARD, stance: 28 }),
-    throw: mk({ trunk: 14, armR: [12, -5, -70, 90, 10], armL: GUARD, stance: 28 }),
+    windup: mk({ trunk: -14, armR: [35, 10, 75, 90, 10], armL: GUARD, stance: 28 }),
+    throw: mk({ trunk: 14, armR: [35, -5, -75, 90, 10], armL: GUARD, stance: 28 }),
     // radio-ulnar joint: elbows at 90, forearms forward
     palmUp: mk({ arms: [10, 0, 0, 90, 88] }),
     palmDown: mk({ arms: [10, 0, 0, 90, -88] }),
@@ -213,17 +213,17 @@
       A.fd = fd;
       A.hip = [g * DIM.hipX, 1, DIM.pelZ - 4];
       const st = p.stance != null ? p.stance : 24;
-      A.ankle = [g * st, 2, DIM.ankleZ];
+      A.ankle = [g * st, 9, DIM.ankleZ];
       A.heel = add(A.ankle, mul(fd, -DIM.heel));
       A.toe = add(A.ankle, mul(fd, DIM.foot));
-      A.knee = [g * (DIM.hipX + st) * 0.5 + fd[0] * 11, 2 + fd[1] * 11, DIM.kneeZ];
+      A.knee = [g * (DIM.hipX + st) * 0.5 + fd[0] * 14, 5 + fd[1] * 14, DIM.kneeZ];
       // greater trochanter swings with hip rotation (back = lateral rotation)
       const ga = (p['hipRot' + s]) * D2R;
       A.troch = [g * (DIM.hipX + 6 * Math.cos(ga) * 0.9) , 1 - 6 * Math.sin(ga), DIM.pelZ - 6];
     }
     R.head = { c: T([0, DIM.headY + sl * 10, DIM.headZ - sl * 10]), ang: tr + (p.head || 0) * D2R, r: DIM.headR };
     R.neck = T([0, -1 + sl * 4, 4]);
-    R.core = T([0, 9, -6]);
+    R.core = T([0, 13, -2]);
     R.sternum = T([0, 14, -6]);
     return R;
   }
@@ -234,37 +234,35 @@
   // pts(A, R): 3D attachment points (origin -> [via] -> insertion).
   // grp: damage group, layer: draw order bucket, deep: drawn faint.
   const MUSCLES = [
-    { id: 'gluteus_maximus', grp: 'legs', layer: 'hip', w: 12, belly: [0.05, 0.9], k: { hipRot: -0.14 },
+    { id: 'gluteus_maximus', grp: 'legs', layer: 'hip', w: 8, belly: [0.05, 0.9], k: { hipRot: -0.14 },
       pts: (A) => [[A.g * 5, -DIM.pelD - 1, DIM.pelZ + 4], add(A.troch, [0, -3, 0])] },
-    { id: 'hip_rotators', grp: 'legs', layer: 'hip', w: 6, deep: true, belly: [0.1, 0.9], k: { hipRot: -0.32 },
+    { id: 'hip_rotators', grp: 'legs', layer: 'hip', w: 4.5, deep: true, belly: [0.1, 0.9], k: { hipRot: -0.32 },
       pts: (A) => [[A.g * 3, -8, DIM.pelZ - 4], A.troch] },
-    { id: 'gluteus_medius', grp: 'legs', layer: 'hip', w: 8, belly: [0.05, 0.85], k: { hipRot: 0.2 },
+    { id: 'gluteus_medius', grp: 'legs', layer: 'hip', w: 6, belly: [0.05, 0.85], k: { hipRot: 0.2 },
       pts: (A) => [[A.g * (DIM.pelW - 2), 4, DIM.pelZ + 8], add(A.troch, [A.g * 1, 3, 0])] },
-    { id: 'latissimus_dorsi', grp: 'torso', layer: 'back', w: 11, belly: [0.0, 0.82], k: { shElev: 0.28, shRot: 0.08, shHAbd: 0.04 },
-      pts: (A, R) => [[A.g * 5, -DIM.pelD + 1, DIM.pelZ + 10], R.T([A.g * (DIM.ribW - 1), -8, -24]), add(add(A.sh, mul(A.d, 6)), mul(A.a, 1))] },
-    { id: 'obliques', grp: 'torso', layer: 'trunk', w: 8, belly: [0.05, 0.85], k: { trunkS: -0.3 },
-      pts: (A, R) => [R.T([A.g * (DIM.ribW - 2), 5, -22]), [-A.g * 3, DIM.pelD, DIM.pelZ + 6]] },
-    { id: 'subscapularis', grp: 'torso', layer: 'scap', w: 7, deep: true, belly: [0.05, 0.8], k: { shRot: 0.32, shHAbd: 0.03 },
-      pts: (A) => [add(A.scap, R0(A, [0, 4, 0])), add(A.sh, mul(A.a, 4.5))] },
-    { id: 'infraspinatus', grp: 'torso', layer: 'scap', w: 9, belly: [0.0, 0.78], k: { shRot: -0.32, shHAbd: -0.04 },
-      pts: (A) => [add(A.scap, R0(A, [0, -2, 1])), add(A.sh, mul(A.a, -5))] },
-    { id: 'pectoralis_major', grp: 'torso', layer: 'chest', w: 14, belly: [0.0, 0.84], k: { shHAbd: 0.32, shRot: 0.1 },
-      pts: (A, R) => [add(R.sternum, R0(A, [A.g * 4, 2, 2])), add(add(A.sh, mul(A.d, 7)), mul(A.a, 3))] },
-    { id: 'deltoid_anterior', grp: 'arm', layer: 'delt', w: 9, belly: [0.0, 0.92], k: { shHAbd: 0.22, shRot: 0.04, shElev: -0.18 },
+    { id: 'latissimus_dorsi', grp: 'torso', layer: 'back', w: 7, belly: [0.0, 0.82], k: { shElev: 0.28, shRot: 0.08, shHAbd: 0.04 },
+      pts: (A, R) => [R.T([A.g * 8, -DIM.ribD + 2, -30]), add(add(A.sh, mul(A.d, 6)), mul(A.a, 1))] },
+    { id: 'obliques', grp: 'torso', layer: 'trunk', w: 6, belly: [0.05, 0.85], k: { trunkS: -0.3 },
+      pts: (A, R) => [R.T([A.g * (DIM.ribW - 1), 3, -22]), [A.g * 7, DIM.pelD + 1, DIM.pelZ + 8]] },
+    { id: 'subscapularis', grp: 'torso', layer: 'scap', w: 5, deep: true, belly: [0.05, 0.8], k: { shRot: 0.32, shHAbd: 0.03 },
+      pts: (A) => [add(A.scap, [0, 4, 0]), add(A.sh, mul(A.a, 4.5))] },
+    { id: 'infraspinatus', grp: 'torso', layer: 'scap', w: 6.5, belly: [0.0, 0.78], k: { shRot: -0.32, shHAbd: -0.04 },
+      pts: (A) => [add(A.scap, [0, -2, 1]), add(A.sh, mul(A.a, -5))] },
+    { id: 'pectoralis_major', grp: 'torso', layer: 'chest', w: 10, belly: [0.0, 0.84], k: { shHAbd: 0.32, shRot: 0.1 },
+      pts: (A, R) => [add(R.sternum, R.T([A.g * 4, 2, 2])), add(add(A.sh, mul(A.d, 7)), mul(A.a, 3))] },
+    { id: 'deltoid_anterior', grp: 'arm', layer: 'delt', w: 6.5, belly: [0.0, 0.92], k: { shHAbd: 0.22, shRot: 0.04, shElev: -0.18 },
       pts: (A) => [add(A.clav, sub(A.sh, A.clav).map((v) => v * 0.72)), add(add(A.sh, mul(A.d, 13)), mul(A.a, 3.5))] },
-    { id: 'deltoid_posterior', grp: 'arm', layer: 'delt', w: 9, belly: [0.0, 0.92], k: { shHAbd: -0.3, shRot: -0.05, shElev: 0.12 },
+    { id: 'deltoid_posterior', grp: 'arm', layer: 'delt', w: 6.5, belly: [0.0, 0.92], k: { shHAbd: -0.3, shRot: -0.05, shElev: 0.12 },
       pts: (A) => [add(A.scap, add(mul(sub(A.sh, A.scap), 0.62), [0, 0, 6])), add(add(A.sh, mul(A.d, 13)), mul(A.a, -3.5))] },
-    { id: 'biceps_brachii', grp: 'arm', layer: 'upper', w: 8, belly: [0.18, 0.88], k: { el: -0.38, fore: -0.12, shElev: -0.04 },
+    { id: 'biceps_brachii', grp: 'arm', layer: 'upper', w: 6, belly: [0.18, 0.88], k: { el: -0.38, fore: -0.12, shElev: -0.04 },
       pts: (A) => [add(A.sh, mul(A.a, 3)), add(add(A.sh, mul(A.d, DIM.upper * 0.9)), mul(A.a, 4.5)), add(add(A.el, mul(A.u, 4)), mul(A.n, 1.5))] },
-    { id: 'triceps_brachii', grp: 'arm', layer: 'upper', w: 9, belly: [0.12, 0.86], k: { el: 0.38, shElev: 0.06 },
+    { id: 'triceps_brachii', grp: 'arm', layer: 'upper', w: 6.5, belly: [0.12, 0.86], k: { el: 0.38, shElev: 0.06 },
       pts: (A) => [add(A.sh, mul(A.a, -3)), add(add(A.sh, mul(A.d, DIM.upper * 0.92)), mul(A.a, -4.5)), add(A.el, add(mul(A.u, -2.5), mul(A.a, -1.5)))] },
-    { id: 'pronator_teres', grp: 'arm', layer: 'fore', w: 6, belly: [0.08, 0.85], k: { fore: 0.3, el: -0.05 },
+    { id: 'pronator_teres', grp: 'arm', layer: 'fore', w: 4.5, belly: [0.08, 0.85], k: { fore: 0.3, el: -0.05 },
       pts: (A) => [add(A.el, add(mul(A.b, -4), mul(A.a, 1.5))), add(add(A.el, mul(A.u, DIM.fore * 0.5)), add(mul(A.th, 3), mul(A.n, 1)))] },
-    { id: 'supinator', grp: 'arm', layer: 'fore', w: 6, belly: [0.08, 0.85], k: { fore: -0.3 },
+    { id: 'supinator', grp: 'arm', layer: 'fore', w: 4.5, belly: [0.08, 0.85], k: { fore: -0.3 },
       pts: (A) => [add(A.el, add(mul(A.b, 4), mul(A.a, -1))), add(add(A.el, mul(A.u, DIM.fore * 0.32)), add(mul(A.th, 3), mul(A.n, -2)))] },
   ];
-  // thorax-frame offset with side mirroring (A.g) is already applied by callers
-  function R0(A, v) { return v; }
   const MUS_BY_ID = {};
   MUSCLES.forEach((m) => { MUS_BY_ID[m.id] = m; });
 
@@ -520,37 +518,39 @@
       const P = R.proj, sc = R.sc;
       for (const s of SIDES) {
         const A = R[s];
-        // foot plate (wedge pointing where the foot points)
-        const side = [A.fd[1], -A.fd[0], 0]; // perpendicular (horizontal)
-        const hw = 4.5;
+        // foot plate: boot wedge pointing where the foot points
+        const side = [A.fd[1], -A.fd[0], 0]; // horizontal perpendicular
+        const hw = 5.2;
         const pts = [
-          add(A.heel, mul(side, hw * 0.8)), add(A.ankle, mul(side, hw)), add(add(A.toe, mul(A.fd, -4)), mul(side, hw * 0.85)),
-          A.toe, add(add(A.toe, mul(A.fd, -4)), mul(side, -hw * 0.85)), add(A.ankle, mul(side, -hw)), add(A.heel, mul(side, -hw * 0.8)),
+          add(A.heel, mul(side, hw * 0.75)), add(A.ankle, mul(side, hw)), add(add(A.toe, mul(A.fd, -6)), mul(side, hw * 1.05)),
+          add(add(A.toe, mul(A.fd, -1.5)), mul(side, hw * 0.6)), A.toe, add(add(A.toe, mul(A.fd, -1.5)), mul(side, -hw * 0.6)),
+          add(add(A.toe, mul(A.fd, -6)), mul(side, -hw * 1.05)), add(A.ankle, mul(side, -hw)), add(A.heel, mul(side, -hw * 0.75)),
         ].map(P);
-        this.poly(ctx, pts, col('#59636e'), col('#1a2028'), 2);
-        // toe cap light (shows which way the foot points)
-        const tc = P(add(A.toe, mul(A.fd, -3.5)));
-        ctx.fillStyle = col('#8d98a3');
-        ctx.beginPath(); ctx.arc(tc[0], tc[1], 2.2 * sc, 0, TAU); ctx.fill();
-        // shank (short, foreshortened) + thigh
-        this.bone(ctx, P(A.knee), P(A.ankle), 4.5 * sc);
-        this.bone(ctx, P(A.hip), P(A.knee), 6 * sc);
-        this.joint(ctx, P(A.ankle), 3.2 * sc);
-        // kneecap: plate on the FRONT of the knee, faces where the knee points
-        const kc = P(A.knee);
-        this.joint(ctx, kc, 4.2 * sc);
-        const pat = P(add(A.knee, mul(A.fd, 4.5)));
-        ctx.fillStyle = col('#c7d0d9'); ctx.strokeStyle = col('#1a2028'); ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.arc(pat[0], pat[1], 2.8 * sc, 0, TAU); ctx.fill(); ctx.stroke();
+        this.poly(ctx, pts, col('#56606b'), col('#11161c'), 2);
+        // toe cap (bright) so the foot direction reads at a glance
+        const tc = [add(add(A.toe, mul(A.fd, -6)), mul(side, hw * 0.95)), add(add(A.toe, mul(A.fd, -1.5)), mul(side, hw * 0.55)), A.toe,
+          add(add(A.toe, mul(A.fd, -1.5)), mul(side, -hw * 0.55)), add(add(A.toe, mul(A.fd, -6)), mul(side, -hw * 0.95))].map(P);
+        this.poly(ctx, tc, col('#aab5c0'), col('#11161c'), 1.2);
+        this.bone(ctx, P(A.knee), P(A.ankle), 4.2 * sc);
+        this.joint(ctx, P(A.ankle), 3 * sc);
       }
       // pelvis plate
       const pel = this.hEllipse(R, [0, 0, DIM.pelZ], DIM.pelW, DIM.pelD, 0, 24);
       this.poly(ctx, pel, col('#4f5964'), col('#161b22'), 2.2);
-      for (const s of SIDES) this.joint(ctx, P(R[s].hip), 4.4 * sc);
-      // pelvis heading tick (anterior superior iliac spines + pubis)
-      const f0 = P([0, DIM.pelD - 3, DIM.pelZ]), f1 = P([0, DIM.pelD + 4, DIM.pelZ]);
+      const f0 = P([0, DIM.pelD - 4, DIM.pelZ]), f1 = P([0, DIM.pelD + 3, DIM.pelZ]);
       ctx.strokeStyle = col('#8d98a3'); ctx.lineWidth = 2.2 * sc;
       ctx.beginPath(); ctx.moveTo(f0[0], f0[1]); ctx.lineTo(f1[0], f1[1]); ctx.stroke();
+      for (const s of SIDES) {
+        const A = R[s];
+        this.bone(ctx, P(A.hip), P(A.knee), 5.5 * sc);
+        this.joint(ctx, P(A.hip), 4 * sc);
+        // kneecap on the FRONT of the knee: faces where the knee points
+        const kc = P(A.knee);
+        this.joint(ctx, kc, 4 * sc);
+        const pat = P(add(A.knee, mul(A.fd, 4.5)));
+        ctx.fillStyle = col('#dfe6ee'); ctx.strokeStyle = col('#1a2028'); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(pat[0], pat[1], 2.8 * sc, 0, TAU); ctx.fill(); ctx.stroke();
+      }
     }
 
     // ---------- trunk ----------
@@ -558,7 +558,7 @@
       const P = R.proj, sc = R.sc, T = R.T;
       // ribcage shell (translucent so pelvis / hip muscles show through)
       const rib = this.hEllipse(R, [0, 0, -14], DIM.ribW, DIM.ribD, R.tr, 32);
-      this.poly(ctx, rib, CHR ? 'rgba(40,30,25,0.82)' : 'rgba(40,55,70,0.78)', col('#1b222b'), 2.2);
+      this.poly(ctx, rib, CHR ? 'rgba(40,30,25,0.82)' : 'rgba(40,55,70,0.6)', col('#1b222b'), 2.2);
       // ribs: arcs around the front of the shell
       ctx.strokeStyle = col('#9aa5b1'); ctx.lineWidth = 1.3 * sc;
       for (let i = 0; i < 4; i++) {
