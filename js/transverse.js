@@ -299,6 +299,47 @@
     pickR(a) { return a[Math.floor(this.rng() * a.length) % a.length]; }
     rr(a, b) { return a + this.rng() * (b - a); }
 
+    // world pop text that never lands on top of another recent one
+    reserve(x, y, h) {
+      this._pops = (this._pops || []).filter((p) => this.time - p.t < 0.9);
+      let yy = y;
+      for (let k = 0; k < 6; k++) {
+        const hit = this._pops.find((p) => Math.abs(p.x - x) < 160 && Math.abs(p.y - yy) < (p.h + (h || 26)) / 2);
+        if (!hit) break;
+        yy = hit.y - (hit.h + (h || 26)) / 2 - 4;
+      }
+      this._pops.push({ x, y: yy, h: h || 26, t: this.time });
+      return yy;
+    }
+    pop(x, y, text, col, size) { this.fx.popText(x, this.reserve(x, y, (size || 26) + 8), text, col, size); }
+
+    // screen-space toast queue (mastery, unlocks, level-ups): one at a time,
+    // top-centre under the HUD, never while a question or card is up
+    toastPush(text) { if (text) (this.toastQ = this.toastQ || []).push({ text: String(text), t: 0 }); }
+    updateToasts(dt) {
+      const q = this.toastQ;
+      if (!q || !q.length) return;
+      if (!(this.mode === 'play' || this.mode === 'resume' || this.mode === 'clear' || this.mode === 'intro')) return;
+      q[0].t += dt;
+      if (q[0].t > 2.5) q.shift();
+    }
+    drawToasts(ctx) {
+      const q = this.toastQ;
+      if (!q || !q.length || !(this.mode === 'play' || this.mode === 'resume' || this.mode === 'clear')) return;
+      const it = q[0], k = it.t;
+      const a = k < 0.25 ? k / 0.25 : k > 2.2 ? Math.max(0, (2.5 - k) / 0.3) : 1;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = '800 19px ui-monospace, monospace';
+      const tw = Math.min(560, ctx.measureText(it.text).width + 44);
+      const y = (this.mode === 'play' && !this.hasTargeted && this.wave <= 2) ? 128 : 82;
+      ctx.fillStyle = 'rgba(30,22,4,0.94)'; ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - tw / 2, y, tw, 40, 8) : ctx.rect(W / 2 - tw / 2, y, tw, 40); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffe9b0'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('★ ' + it.text, W / 2, y + 21, tw - 20);
+      ctx.restore();
+    }
+
     // ---------------- js/progress.js hooks (all optional) ----------------
     progressCall(fn, args) {
       const P = SEHS.Progress;
@@ -459,6 +500,7 @@
     }
 
     say(a, text, dur) {
+      if (a && a.state === 'netted') return; // a netted ally only shows its countdown label
       if (!a || !text || this.mode === 'decide' || this.mode === 'ramp') return;
       this.bubbles = this.bubbles.filter((b) => b.ally !== a);
       this.bubbles.push({ ally: a, text, t: 0, dur: dur || 3.2 });
@@ -467,6 +509,7 @@
     netAlly(a, netter) {
       if (!a || a.state === 'taken' || a.state === 'netted') return;
       a.state = 'netted';
+      this.bubbles = this.bubbles.filter((b) => b.ally !== a);
       a.netT = this.eff.netCutWindow || 8;
       a.netMax = a.netT;
       a.netter = netter;
@@ -501,7 +544,7 @@
 
     takeAlly(a) {
       a.state = 'taken';
-      this.fx.popText(clamp(a.x, 80, W - 80), clamp(a.y, 120, H - 80), fill(UI.hud.taken, { unit: a.unit }), '#ff5a5a', 24);
+      this.pop(clamp(a.x, 80, W - 80), clamp(a.y, 120, H - 80), fill(UI.hud.taken, { unit: a.unit }), '#ff5a5a', 24);
       if (a.netter && !a.netter.dead) { a.netter.retreat = true; a.netter.ally = null; }
       a.netter = null;
       if (this.rescue && this.rescue.ally === a) this.closeRescue();
@@ -672,7 +715,7 @@
             if (!d.ally) { if (this.moveTo(d, ...polar(th, 200), spd, wdt) < 2) d.retreat = true; break; }
             if (this.moveTo(d, d.ally.x, d.ally.y - 4, spd, wdt) < 22) {
               d.ally.pauseT = 2; d.ally.shake = 0.5;
-              this.fx.popText(d.ally.x, d.ally.y - 30, 'BUMP!', '#ffb020', 18);
+              this.pop(d.ally.x, d.ally.y - 30, 'BUMP!', '#ffb020', 18);
               d.retreat = true;
             }
             break;
@@ -744,7 +787,7 @@
               d.st = 'hooked';
               if (this.tryTrigger(d)) break;
               if (!this.hooked) this.hooked = d;
-              this.fx.popText(AX + 40, AY - 60, 'ARM HOOKED', '#ffb020', 18);
+              this.pop(AX + 40, AY - 60, 'ARM HOOKED', '#ffb020', 18);
             }
             if (d.st === 'hooked' && this.hooked === d) {
               const [ux, uy] = (() => { const dx = d.x - AX, dy = d.y - AY, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; })();
@@ -782,7 +825,7 @@
             d.x = p[0]; d.y = p[1];
             if (d.holdT > 3 && !d.tried) { d.tried = true; if (this.tryTrigger(d)) break; }
             d.callT -= wdt;
-            if (d.callT <= 0) { d.callT = 8; for (let i = 0; i < 2; i++) this.spawnDrone('scout', th + (i ? 25 : -25)); this.fx.popText(d.x, d.y + 30, 'CALLING BACKUP', '#ff6a3d', 16); }
+            if (d.callT <= 0) { d.callT = 8; for (let i = 0; i < 2; i++) this.spawnDrone('scout', th + (i ? 25 : -25)); this.pop(d.x, d.y + 30, 'CALLING BACKUP', '#ff6a3d', 16); }
             break;
           }
           case 'heavy': {
@@ -807,7 +850,7 @@
             if (d.st === 'clamp') { d.x = foot[0] + (d.foot === 'R' ? 10 : -10); d.y = foot[1]; this.snareT = Math.max(this.snareT, 0.2); break; }
             const rem = this.moveTo(d, foot[0] + (d.foot === 'R' ? 12 : -12), foot[1], spd, wdt);
             if (!d.tried && d.foot === 'R' && dist(d.x, d.y, foot[0], foot[1]) < 70) { d.tried = true; if (this.tryTrigger(d)) break; }
-            if (rem < 4) { d.st = 'clamp'; this.snareT = 4; this.chip(0.5, 'legR', d); this.fx.popText(foot[0], foot[1] + 30, 'SNARED', '#ffb020', 18); }
+            if (rem < 4) { d.st = 'clamp'; this.snareT = 4; this.chip(0.5, 'legR', d); this.pop(foot[0], foot[1] + 30, 'SNARED', '#ffb020', 18); }
             break;
           }
           case 'jammer': {
@@ -817,7 +860,7 @@
             if (dA < 200 && !d.tried) {
               d.tried = true;
               if (this.canFreeze()) {
-                this.fx.popText(d.x, d.y - 40, 'SIGNAL SCRAMBLED', '#ff7ad9', 20);
+                this.pop(d.x, d.y - 40, 'SIGNAL SCRAMBLED', '#ff7ad9', 20);
                 const id = this.chooseThreat(this.cfg.pool);
                 if (id) this.forceThreat(id, {});
               }
@@ -844,7 +887,7 @@
       if (canShield) {
         this.startAction({ kind: 'shield', side: 'R', front }, d, false);
         this.fx.shieldFlash(hand[0], hand[1], Math.atan2(d.y - hand[1], d.x - hand[0]), 26);
-        this.fx.popText(hand[0], hand[1] - 36, 'BLOCKED', '#8ff0ff', 18);
+        this.pop(hand[0], hand[1] - 36, 'BLOCKED', '#8ff0ff', 18);
       } else this.chip(0.5, 'armR', d);
     }
 
@@ -852,14 +895,14 @@
     damageDrone(d, dmg, o) {
       o = o || {};
       if (d.dead) return;
-      if (d.type === 'warden') { this.fx.popText(d.x, d.y - 80, 'ARMOURED', '#9aa5b1', 18); this.fx.sparks(d.x, d.y, 6, { g: 0 }); return; }
+      if (d.type === 'warden') { this.pop(d.x, d.y - 80, 'ARMOURED', '#9aa5b1', 18); this.fx.sparks(d.x, d.y, 6, { g: 0 }); return; }
       if (d.type === 'heavy' && o.swat) dmg *= 0.5;
       let crit = false;
       if (!o.noCrit && Math.random() < effN(this.eff, 'critChance', 0)) { dmg *= 2; crit = true; }
       d.hp -= dmg;
       d.hit = 1;
       if (o.kb) { d.kx += o.kb[0]; d.ky += o.kb[1]; }
-      if (crit) this.fx.popText(d.x, d.y - 30, 'MUSCLE SURGE ×2', '#ff6a3d', 18);
+      if (crit) this.pop(d.x, d.y - 30, 'MUSCLE SURGE ×2', '#ff6a3d', 18);
       this.fx.sparks(d.x, d.y, 8, { g: 0, vmax: 320 });
       if (!o.noStop && !this.fx.reduce) this.hitStop = Math.max(this.hitStop, 0.06);
       Audio.droneZap && Audio.droneZap();
@@ -886,10 +929,10 @@
       this.comboT = this.eff.comboKeep || 3;
       this.stats.comboBest = Math.max(this.stats.comboBest, this.combo);
       this.ws.comboBest = Math.max(this.ws.comboBest, this.combo);
-      if (this.combo >= 2 && !quiet) this.fx.comboText(x != null ? x : AX, (y != null ? y : AY) - 40, this.combo);
+      if (this.combo >= 2 && !quiet) { const cx = x != null ? x : AX; this.fx.comboText(cx, this.reserve(cx, (y != null ? y : AY) - 40, 46), this.combo); }
       if (Math.floor(this.combo / 5) > Math.floor(before / 5)) {
         this.overdrive = effN(this.eff, 'overdriveTime', 4);
-        if (!quiet) this.fx.popText(AX, AY - 120, UI.hud.overdrive, '#ff6a3d', 40);
+        if (!quiet) this.pop(AX, AY - 120, UI.hud.overdrive, '#ff6a3d', 40);
         this.fx.doFlash(0.2, '255,120,60');
         const a = pick(this.allies.filter((q) => this.allyWorking(q)));
         if (a) this.say(a, pick(C.DRONE_BANTER.events.overdrive));
@@ -899,11 +942,11 @@
 
     gainEnergy(n, x, y) {
       const ax = AX + this.pl.ox, ay = AY + this.pl.oy;
-      if (this.energy >= this.maxEnergy) { this.fx.popText(ax, ay - 70, 'ENERGY FULL', '#aac8d7', 16); return; }
+      if (this.energy >= this.maxEnergy) { this.pop(ax, ay - 70, 'ENERGY FULL', '#aac8d7', 16); return; }
       this.energy = Math.min(this.maxEnergy, this.energy + n);
       this.fx.energyGain(ax, ay - 10);
       Audio.energyUp();
-      this.fx.popText(ax, ay - 70, '+1 ENERGY', '#4dffa0', 24);
+      this.pop(ax, ay - 70, '+1 ENERGY', '#4dffa0', 24);
     }
 
     // real-time chip: ½ cell (spotter mark doubles it), sparks, no explosion
@@ -1188,10 +1231,14 @@
     }
 
     practice() { const g = this.game.settings; return !!(g && g.practice); }
+    // the transverse axis name currently on screen (held steady while a question/card names it)
+    axisNow(pid) { const u = this.game.ui; return u && u.axisNow ? u.axisNow(pid || 'transverse') : C.axisName(pid || 'transverse'); }
+    holdAxis(ms) { const u = this.game.ui; if (u && u.lockAxis) u.lockAxis(this.axisNow('transverse'), ms); }
 
     updateDecide(dt) {
       const F = this.freeze;
       this.ts = 0.02;
+      this.holdAxis(400);
       F.practice = this.practice();
       if (F.practice) {
         // untimed: no countdown, a calm tremble, the panel waits for the answer
@@ -1290,6 +1337,17 @@
       const fresh = tagged.filter((q) => !logged[q.id]);
       const key = fresh.length ? this.pickR(fresh).id : tagged.length ? this.pickR(tagged).id : (F.st.kind === 'movement' ? 'joint_actions' : 'contractions');
       try { const f = Wk.addFault(this.save, key, this.rng); this.ws.faults = (this.ws.faults || 0) + 1; return f; } catch (e) { return null; }
+    }
+
+    // a threat's title for cards outside a freeze (summary, wave failed): the
+    // ally named in the content must be in camp, otherwise the stand-in is named
+    titleFor(id) {
+      const S = THREAT_STAGE[id], t = C.DRONE_THREATS[id].title;
+      if (!S || !S.ally) return t;
+      const pref = (C.ALLY_ROSTER.find((r) => r.id === S.ally.prefer) || {}).name;
+      if (!pref || this.allies.some((q) => q.name === pref && q.state !== 'taken')) return t;
+      const sub = this.pickStageAlly(S) || this.allies.find((q) => q.state !== 'taken');
+      return t.replace(new RegExp('\\b' + pref + '\\b', 'g'), sub ? sub.name : 'CREWMATE');
     }
 
     // threat text with the on-screen ally's name (never name an ally who is not in camp)
@@ -1493,7 +1551,7 @@
             // a camp flare drives the threat drone off (no double punishment)
             const d = F.drone;
             self.beams.push({ x1: TRUCK.x, y1: TRUCK.y - 40, x2: d.x, y2: d.y, t: 0, life: 0.5, col: '255,140,60', w: 4 });
-            self.fx.popText(d.x, d.y - 40, 'FLARE!', '#ffb347', 20);
+            self.pop(d.x, d.y - 40, 'FLARE!', '#ffb347', 20);
             F.members.forEach((m) => { m.staged = false; m.retreat = true; });
           }
           self.fx.glitch = t < 0.3 ? 0.2 : Math.min(0.85, 0.2 + (t - 0.3));
@@ -1597,7 +1655,7 @@
       this.failInfo = null;
       this.mode = 'resume';
       this.modeT = 0;
-      (this.pendingToasts || []).slice(0, 3).forEach((txt, i) => setTimeout(() => { if (this.game.level === this) this.fx.popText(AX, 150 + i * 34, String(txt), '#ffd27a', 24); }, 600 + i * 700));
+      (this.pendingToasts || []).forEach((txt) => this.toastPush(txt));
       this.pendingToasts = [];
     }
 
@@ -1610,7 +1668,7 @@
       if (!opts && Date.now() - (this._scrapSaved || 0) > 3000) { this._scrapSaved = Date.now(); this.persist(); }
       const p = this.worldToScreen(x, y);
       this.fx.scrapPickup(x, y, { n: Math.min(8, n), tx: this.screenToWorld(1010, 24)[0], ty: this.screenToWorld(1010, 24)[1] });
-      this.fx.popText(x, y - 30, `+${n} SCRAP`, '#ffd27a', 22);
+      this.pop(x, y - 30, `+${n} SCRAP`, '#ffd27a', 22);
       Audio.scrapCoin && setTimeout(() => Audio.scrapCoin(), 350);
       return p;
     }
@@ -1712,7 +1770,7 @@
           kicker: crew ? UI.wave.noCrew : `${UI.wave.shutdown} · ENERGY 0/${this.maxEnergy}`,
           kickerClass: 'red',
           title: crew ? UI.wave.noCrew : UI.wave.failed,
-          html: `<p>${crew ? UI.wave.noCrewDetail : UI.wave.restart}</p>${this.reask.length ? `<p class="dim">Threats waiting to be asked again: <b>${this.reask.map((id) => C.DRONE_THREATS[id].title).join(', ')}</b></p>` : ''}`,
+          html: `<p>${crew ? UI.wave.noCrewDetail : UI.wave.restart}</p>${this.reask.length ? `<p class="dim">Threats waiting to be asked again: <b>${this.reask.map((id) => this.titleFor(id)).join(', ')}</b></p>` : ''}`,
           buttons: [
             { label: 'Menu', act: 'menu' },
             workshopAPI() ? { label: 'Workshop first', act: () => this.openWorkshop(this.wave) } : null,
@@ -1786,7 +1844,7 @@
             <div><b>${this.reask.length}</b><span>threats to re-ask</span></div>
           </div>
           ${ws.contractsDone && ws.contractsDone.length ? `<div class="dd-contracts"><b>CONTRACTS COMPLETE</b>${ws.contractsDone.map((c) => `<div>✔ ${c.name}${c.scrap ? ` <span>+${c.scrap} scrap</span>` : ''}</div>`).join('')}</div>` : ''}
-          ${this.reask.length ? `<p class="dim">Coming back next wave: <b>${this.reask.map((id) => C.DRONE_THREATS[id].title).join(', ')}</b></p>` : ''}
+          ${this.reask.length ? `<p class="dim">Coming back next wave: <b>${this.reask.map((id) => this.titleFor(id)).join(', ')}</b></p>` : ''}
           ${this.saveOk ? '' : `<p class="dim">${UI.hud.notSaved}</p>`}`,
         buttons: [
           { label: 'Menu', act: 'menu' },
@@ -1856,7 +1914,7 @@
       });
       this.warden = { d, phase: 0, chains, chain: chains[0].slice(), idx: 0, phaseT: 6, plates: [1, 1, 1], th: 0, finale: 0, dead: false };
       Audio.bossWarning && Audio.bossWarning();
-      this.fx.popText(AX, 160, UI.wave.wardenInbound, '#ff5a5a', 40);
+      this.pop(AX, 160, UI.wave.wardenInbound, '#ff5a5a', 40);
       this.allies.forEach((a, i) => setTimeout(() => { if (this.game.level === this && a.state !== 'taken') this.say(a, C.DRONE_BANTER.events.warden[0]); }, 400 + i * 250));
       this.wardenHum = Audio.droneHum ? Audio.droneHum('warden', 1) : null;
     }
@@ -1874,7 +1932,7 @@
         Wd.phaseT -= wdt;
         if (Wd.phaseT <= 0 && Wd.phase < 3) {
           const id = Wd.chain[Wd.idx];
-          this.fx.popText(d.x, d.y + 90, Wd.idx === 0 ? `PHASE ${Wd.phase + 1}` : 'CHAIN!', '#ff5a5a', 26);
+          this.pop(d.x, d.y + 90, Wd.idx === 0 ? `PHASE ${Wd.phase + 1}` : 'CHAIN!', '#ff5a5a', 26);
           if (!this.forceThreat(id, { boss: true, from: { x: d.x, y: d.y } })) Wd.phaseT = 2;
         }
       }
@@ -1889,14 +1947,14 @@
         Wd.chain = Wd.chain.slice(Math.max(0, i));
         Wd.idx = 0;
         Wd.phaseT = 10;
-        this.fx.popText(Wd.d.x, Wd.d.y - 90, `${PLATE_NAMES[Wd.phase]} PLATE RE-SEALED`, '#ffb020', 22);
+        this.pop(Wd.d.x, Wd.d.y - 90, `${PLATE_NAMES[Wd.phase]} PLATE RE-SEALED`, '#ffb020', 22);
         return;
       }
       Wd.idx++;
       if (Wd.idx < Wd.chain.length) { Wd.phaseT = 2; return; }
       Wd.plates[Wd.phase] = 0;
       this.fx.droneExplode(Wd.d.x + rand(-40, 40), Wd.d.y + rand(-40, 40), 1.6);
-      this.fx.popText(Wd.d.x, Wd.d.y - 100, `${PLATE_NAMES[Wd.phase]} PLATE CRACKED`, '#ffd27a', 28);
+      this.pop(Wd.d.x, Wd.d.y - 100, `${PLATE_NAMES[Wd.phase]} PLATE CRACKED`, '#ffd27a', 28);
       Audio.droneBoom && Audio.droneBoom();
       Wd.phase++;
       Wd.idx = 0;
@@ -1908,7 +1966,7 @@
     wardenFinale() {
       const Wd = this.warden;
       Wd.finale = 0.001;
-      this.fx.popText(AX, 150, 'CORE EXPOSED', '#ff6a3d', 40);
+      this.pop(AX, 150, 'CORE EXPOSED', '#ff6a3d', 40);
     }
 
     updateFinale(dt) {
@@ -1927,7 +1985,7 @@
         d.dead = true;
         this.stats.wardens++;
         this.save.lifetime.wardens = (this.save.lifetime.wardens || 0) + 1;
-        this.fx.popText(AX, 170, UI.wave.wardenDown, '#7dff9a', 44);
+        this.pop(AX, 170, UI.wave.wardenDown, '#7dff9a', 44);
         const cheer = this.allies.find((a) => a.state !== 'taken');
         if (cheer) this.say(cheer, C.DRONE_BANTER.events.wardenDown[0]);
         this.gainEnergy(1);
@@ -1939,7 +1997,7 @@
     // ---------------- rescue (§4.5) ----------------
     startRescue(a) {
       if (this.mode !== 'play' || !a || a.state !== 'netted' || this.rescue) return false;
-      if (a.lockT && this.time < a.lockT) { this.fx.popText(a.x, a.y - 40, UI.rescueLockout, '#ffb020', 18); return false; }
+      if (a.lockT && this.time < a.lockT) { this.pop(a.x, a.y - 40, UI.rescueLockout, '#ffb020', 18); return false; }
       this.rescue = { ally: a };
       this.newRescueQuestion();
       return true;
@@ -1964,8 +2022,9 @@
         R.options = shuffle(ids.map((id) => C.PLANES[id].name));
         prompt = fill(UI.rescuePrompt, { movement: R.mv.toUpperCase() });
       } else {
-        R.correct = C.axisName(pid);
-        R.options = shuffle(ids.map((id) => C.axisName(id)));
+        R.correct = this.axisNow(pid);
+        R.options = shuffle(ids.map((id) => this.axisNow(id)));
+        if (this.game.ui.lockAxis) this.game.ui.lockAxis(this.axisNow('transverse'), 600000);
         prompt = fill(UI.rescueAxisPrompt || 'Nearly free! {movement} is in the {plane}. Which axis does it turn about?', { movement: R.mv.toUpperCase(), plane: C.PLANES[pid].name.toLowerCase() });
       }
       this.game.ui.showDecision({
@@ -2000,7 +2059,7 @@
         this.stats.rescues++;
         const h = AndroidTop.handPos(this.pl.pose, AX + this.pl.ox, AY + this.pl.oy, 'R', 1);
         this.fx.discTrail([h, [lerp(h[0], a.x, 0.5) + 30, lerp(h[1], a.y, 0.5) - 30], [a.x, a.y]]);
-        this.fx.popText(a.x, a.y - 50, fill(UI.rescueCorrect, { name: a.name }), '#7dff9a', 22);
+        this.pop(a.x, a.y - 50, fill(UI.rescueCorrect, { name: a.name }), '#7dff9a', 22);
         this.closeRescue();
         this.freeAlly(a, false);
         return;
@@ -2013,13 +2072,15 @@
       if (Wk && typeof Wk.addFault === 'function') { try { Wk.addFault(this.save, 'planes_axes', this.rng); } catch (e) { /* ignore */ } }
       const msg = R.step === 1
         ? fill(UI.rescueWrong, { movement: R.mv, plane: C.PLANES[pid].name.toLowerCase() })
-        : `Cutter jammed! The ${C.PLANES[pid].name.toLowerCase()} turns about the ${C.axisAllNames(pid)}. Try again in 2 s.`;
+        : `Cutter jammed! The ${C.PLANES[pid].name.toLowerCase()} turns about the ${this.axisNow(pid)}. Try again in 2 s.`;
       this.game.ui.rescueWrong(msg);
       setTimeout(() => { if (this.rescue === R && a.state === 'netted' && this.game.level === this) this.newRescueQuestion(); }, 2000);
     }
 
     closeRescue() {
       if (!this.rescue) return;
+      const u = this.game.ui;
+      if (this.rescue.step === 2 && u && u.lockAxis) u.lockAxis(this.axisNow('transverse'), 0);
       this.rescue = null;
       if (this.mode !== 'decide') this.game.ui.hideDecision();
     }
@@ -2231,7 +2292,7 @@
         const plan = tgt && this.planAction(tgt);
         this.focusReq = false;
         if (plan) { this.startAction(plan, tgt, true); this.pending = null; return; }
-        if (tgt) this.fx.popText(AX, AY - 80, 'OUT OF REACH', '#9aa5b1', 16);
+        if (tgt && this.time > (this.oorT || 0)) { this.oorT = this.time + 1.5; this.pop(AX, AY - 80, 'OUT OF REACH', '#9aa5b1', 16); }
       }
       const at = this.autoTarget();
       if (!at) { this.pending = null; return; }
@@ -2358,6 +2419,7 @@
       else this.slowmo = 0;
       for (const b of this.beams) b.t += dt;
       this.beams = this.beams.filter((b) => b.t < b.life);
+      this.updateToasts(dt);
       for (const f of this.floaters) f.t += dt;
       this.floaters = this.floaters.filter((f) => f.t < f.life);
       if (this.readout) this.readout.t += dt;
@@ -2452,6 +2514,7 @@
       if (this.mode === 'replay') this.drawReplayTag(ctx);
       this.drawHUD(ctx);
       this.drawHint(ctx);
+      this.drawToasts(ctx);
       fx.drawScreen(ctx, W, H);
       if (this.hitFlash > 0) { ctx.fillStyle = `rgba(255,40,60,${this.hitFlash * (reduce ? 0.15 : 0.35)})`; ctx.fillRect(0, 0, W, H); }
       if (this.sysFail > 0) this.drawSystemFailure(ctx);
@@ -2587,8 +2650,15 @@
         ctx.strokeStyle = k > 0.4 ? '#ffb020' : '#ff3040';
         ctx.beginPath(); ctx.arc(a.x, a.y, 34, -Math.PI / 2, -Math.PI / 2 + k * TAU); ctx.stroke();
         ctx.restore();
-        this.worldText(ctx, fill(UI.hud.netted, { s: Math.ceil(a.netT) }), a.x, a.y + 46, '#ffb020', 13);
-        if (this.mode === 'play' && !this.rescue) this.worldText(ctx, 'CLICK or R: CUT FREE', a.x, a.y + 62, '#ffe066', 11);
+        // one compact label: countdown + how to free them
+        const lbl = fill(UI.hud.netted, { s: Math.ceil(a.netT) }) + (this.mode === 'play' && !this.rescue ? ' · CLICK / R' : '');
+        const lp = clearOfHud(a.x, a.y + 48);
+        ctx.save(); ctx.font = '800 13px ui-monospace, monospace';
+        const lw = ctx.measureText(lbl).width + 14;
+        ctx.fillStyle = 'rgba(30,20,0,0.9)'; ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 1.5;
+        ctx.fillRect(lp[0] - lw / 2, lp[1] - 10, lw, 20); ctx.strokeRect(lp[0] - lw / 2, lp[1] - 10, lw, 20);
+        ctx.restore();
+        this.worldText(ctx, lbl, lp[0], lp[1], '#ffd27a', 13);
         if (a.netter && !a.netter.dead) DroneArt.drawTether(ctx, a.netter.x, a.netter.y, a.x, a.y, this.time, 0.7);
       }
       // name + status light
@@ -2663,7 +2733,7 @@
         ctx.strokeStyle = `rgba(255,176,32,${0.35 + 0.35 * p})`; ctx.lineWidth = 2.5; ctx.setLineDash([8, 6]);
         ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 16 + 4 * p, 0, TAU); ctx.stroke();
         ctx.restore();
-        if (!this.hasTargeted || this.wave <= 1) this.worldText(ctx, 'THREAT: TARGET IT', clamp(d.x, 80, W - 80), Math.max(90, d.y - d.r - 26), '#ffb020', 13);
+        if ((!this.hasTargeted || this.wave <= 1) && d.st !== 'tow') this.worldText(ctx, 'THREAT: TARGET IT', clamp(d.x, 80, W - 80), Math.max(90, d.y - d.r - 26), '#ffb020', 13);
       }
       // body
       const hpFrac = d.maxHp > 1 && d.type !== 'warden' && d.hp < d.maxHp && !d.staged ? d.hp / d.maxHp : null;
@@ -2882,8 +2952,8 @@
         ctx.fillText('◉ TIME DILATION ACTIVE', left ? W - 24 : 24, 92);
         ctx.font = '700 14px ui-monospace, monospace';
         ctx.fillStyle = 'rgba(191,244,255,0.85)';
-        ctx.fillText(`⊙ ${C.axisName('transverse').toUpperCase()} points out of the screen`, left ? W - 24 : 24, 114);
-        if (this.jammed()) { ctx.fillStyle = '#ffc53d'; ctx.fillText(`${UI.freeze.sensorsJammed}: muscles shown white`, left ? W - 24 : 24, 136); }
+        ctx.fillText(`⊙ ${this.axisNow('transverse').toUpperCase()} points out of the screen`, left ? W - 24 : 24, 114);
+        if (this.jammed()) { ctx.fillStyle = '#ffc53d'; ctx.fillText(`${UI.freeze.sensorsJammed}: contraction colours hidden`, left ? W - 24 : 24, 136); }
         ctx.restore();
       }
     }
@@ -2905,7 +2975,12 @@
       const r = 118, Zi = 3.1;
       const cands = left ? [[560, 470], [1100, 470], [1100, 230], [560, 230], [830, 560]] : [[180, 330], [720, 470], [720, 230], [450, 560]];
       let best = cands[0], bs = -1;
-      for (const c of cands) { const sc = Math.min(dist(c[0], c[1], fs[0], fs[1]), dist(c[0], c[1], ds[0], ds[1]) + 40); if (sc > bs) { bs = sc; best = c; } }
+      const avoid = this.allies.filter((q) => q.state === 'netted' || q === F.ally).map((q) => this.worldToScreen(q.x, q.y));
+      for (const c of cands) {
+        let sc = Math.min(dist(c[0], c[1], fs[0], fs[1]), dist(c[0], c[1], ds[0], ds[1]) + 40);
+        for (const q of avoid) sc = Math.min(sc, dist(c[0], c[1], q[0], q[1]) + 20);
+        if (sc > bs) { bs = sc; best = c; }
+      }
       const [cx, cy] = best;
       ctx.save();
       ctx.globalAlpha = a;

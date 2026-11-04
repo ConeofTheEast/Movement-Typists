@@ -397,6 +397,11 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
 @keyframes ws-bought { 0% { box-shadow: 0 0 0 0 var(--cc); background-color: color-mix(in srgb, var(--cc) 30%, #0c1620); } 100% { box-shadow: 0 0 1.1em color-mix(in srgb, var(--cc) 25%, transparent); } }
 .ws-card-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; }
 .ws-muscle { font: 700 0.66em ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cc); }
+.ws-pw-now, .ws-pw-next { display: inline-flex; align-items: center; gap: 0.12em; }
+.ws-pw-now { color: var(--dim); }
+.ws-pw-arrow { color: var(--dim); margin: 0 0.15em; }
+.ws-slot-pw { font-style: normal; color: var(--dim); }
+.ws-slot-pw.on { color: var(--amber); font-weight: 700; }
 .ws-pw { display: inline-flex; align-items: center; gap: 0.15em; font: 800 0.78em ui-monospace, monospace; color: var(--amber); padding: 0.1em 0.4em; border-radius: 0.3em; background: rgba(255,197,61,0.08); }
 .ws-card h4 { margin: 0; font-size: 1.08em; }
 .ws-desc { margin: 0; font-size: 0.78em; line-height: 1.38; color: #a9bccf; flex: 1; }
@@ -451,9 +456,11 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
 .ws-g-pct { position: absolute; left: 0; right: 0; bottom: -0.05em; text-align: center; font: 900 0.95em ui-monospace, monospace; }
 .ws-g-txt { min-width: 0; line-height: 1.25; }
 .ws-g-name { font-weight: 800; font-size: 0.86em; }
-.ws-g-link { font-size: 0.7em; color: var(--cyan); }
-.ws-g-bonus { font: 700 0.68em ui-monospace, monospace; color: var(--green); margin-top: 0.1em; }
-.ws-g-n { font-size: 0.6em; color: #5f7489; }
+.ws-g-name { font-size: max(0.9em, 14px); }
+.ws-g-link { font-size: max(0.82em, 13px); color: var(--cyan); }
+.ws-g-bonus { font: 700 max(0.8em, 13px) ui-monospace, monospace; color: var(--green); margin-top: 0.1em; }
+.ws-g-bonus.zero { font-family: system-ui, sans-serif; font-weight: 600; color: #ffd7a0; }
+.ws-g-n { font-size: max(0.78em, 13px); color: #8197ad; }
 
 /* intel side panel */
 .ws-side-h { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.6em; }
@@ -464,13 +471,26 @@ ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
 .ws-drones li { display: flex; align-items: center; gap: 0.5em; padding: 0.15em 0.4em 0.15em 0.15em; border-radius: 0.4em; background: #0c1620; border: 1px solid #1f3142; }
 .ws-drones li.new { border-color: var(--amber); box-shadow: 0 0 0.8em rgba(255,197,61,0.2); }
 .ws-dicon { width: 2.6em; height: 2.6em; flex: none; border-radius: 0.3em; background: radial-gradient(circle, #1a2a3a, #0a121a); }
-.ws-dname { flex: 1; font: 800 0.8em ui-monospace, monospace; letter-spacing: 0.08em; }
+.ws-dname { flex: 1; min-width: 0; font: 800 0.8em ui-monospace, monospace; letter-spacing: 0.08em; }
+/* compact two-column drone list so the whole intel panel fits at 1280×720 */
+.ws-drones { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3em; }
+.ws-drones li { position: relative; gap: 0.3em; padding: 0.1em 0.3em 0.1em 0.1em; }
+.ws-drones .ws-dicon { width: 2.2em; height: 2.2em; }
+.ws-drones .ws-dname { font-size: 0.68em; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; }
+.ws-drones b { font-size: 0.85em; }
+.ws-drones em { position: absolute; top: -0.55em; right: 0.3em; }
+.ws-dname small { display: block; font: 600 0.82em system-ui, sans-serif; letter-spacing: 0; color: var(--dim); }
+.ws-intel-h { margin: 0.6em 0 0.35em; font: 800 0.7em ui-monospace, monospace; letter-spacing: 0.16em; color: var(--dim); }
+.ws-radar.off { animation: none; background: none; border-color: #3a4a5c; }
+.ws-nosig.small { padding: 0.55em 0.5em; }
+.ws-nosig.small b { font-size: 0.85em; letter-spacing: 0.12em; }
+.ws-newline.red { color: #ffb3bd; border-left-color: var(--red); font-weight: 800; }
 .ws-drones b { font: 900 1em ui-monospace, monospace; color: #fff; }
 .ws-drones em { font: 900 0.6em ui-monospace, monospace; font-style: normal; background: var(--amber); color: #1a1204; padding: 0.15em 0.35em; border-radius: 0.25em; letter-spacing: 0.1em; }
 .ws-newline { margin: 0.3em 0; font-size: 0.78em; line-height: 1.35; color: #ffe2a0; padding-left: 0.5em; border-left: 2px solid var(--amber); }
 .ws-newline.amber { color: #ffd7a0; }
 .ws-compass { display: flex; align-items: center; gap: 0.6em; margin: 0.4em 0; }
-.ws-compass span { flex: none; width: 6.2em; height: 6.2em; }
+.ws-compass span { flex: none; width: 4.4em; height: 4.4em; }
 .ws-compass svg { width: 100%; height: 100%; display: block; }
 .ws-compass p { margin: 0; font: 700 0.78em ui-monospace, monospace; letter-spacing: 0.05em; color: #ffb3bd; line-height: 1.35; }
 .ws-warden { margin-bottom: 0.5em; padding: 0.4em; text-align: center; font: 900 0.95em ui-monospace, monospace; letter-spacing: 0.15em; color: #fff;

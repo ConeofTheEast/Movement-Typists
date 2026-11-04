@@ -81,15 +81,20 @@
       const s = st.success;
       const con = C.CONTRACTIONS[s.contraction];
       const names = s.agonists.map((id) => C.MUSCLES[id].name).join(', ');
+      const pid = plane.id || 'sagittal';
+      const dur = s.deeper ? 5200 : 3600;
+      // the HUD axis tag holds this exact name while the toast is up
+      const axNow = this.axisNow(pid);
+      if (pid === 'transverse') this.lockAxis(axNow, dur + 200);
       const planeLine = st.kind === 'movement'
-        ? `<div class="t-sub">${plane.name} · ${C.axisName(plane.id || 'sagittal')}</div>`
+        ? `<div class="t-sub">${plane.name} · ${axNow}</div>`
         : `<div class="t-sub">${con.def}</div>`;
       const deeper = s.deeper ? `<div class="t-deep">${s.deeper}</div>` : '';
       $('toast').innerHTML = `<div class="t-head">✔ ${s.headline}</div>${planeLine}<div class="t-body">${s.detail}</div>${deeper}<div class="t-mus"><span class="chip" style="--c:${con.color}">${con.letter}</span>${names}: ${C.contractionLabel(s.contraction).toLowerCase()}</div>`;
       $('toast').classList.toggle('left', !!(o && o.side === 'left'));
       this.show('toast');
       clearTimeout(this._tt);
-      this._tt = setTimeout(() => this.hide('toast'), s.deeper ? 5200 : 3600);
+      this._tt = setTimeout(() => this.hide('toast'), dur);
     },
 
     showFail(info, stats) {
@@ -143,7 +148,9 @@
       sent.forEach((x) => { if ((head + x).split(/\s+/).length <= 42 || !head) head += x; else rest += x; });
       $('f-explain').textContent = head.trim();
       const names = s.agonists.map((id) => (C.MUSCLES[id] ? C.MUSCLES[id].name : id)).join(', ');
-      $('f-correct').innerHTML = `<b>${st.correct}</b><br><span class="dim">${st.kind === 'movement' ? `${pl.name} · axis: ${C.axisAllNames('transverse')}` : con.def}</span>`;
+      const axNow = this.axisNow('transverse');
+      this.lockAxis(axNow, 0, true); // held while the card is visible
+      $('f-correct').innerHTML = `<b>${st.correct}</b><br><span class="dim">${st.kind === 'movement' ? `${pl.name} · about the ${axNow}` : con.def}</span>`;
       $('f-more').innerHTML = `${rest ? `<p>${rest.trim()}</p>` : ''}<p>${s.detail}</p>${s.deeper ? `<p class="dim">${s.deeper}</p>` : ''}<p><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${C.contractionLabel(s.contraction).toLowerCase()}</p>`;
       $('f-more').classList.add('hidden');
       $('btn-more').classList.remove('hidden');
@@ -258,8 +265,18 @@
 
   // Drone Defense HUD: energy/repair/wave/scrap/combo/allies are drawn on the
   // canvas by the level; the DOM keeps the rotating axis tag and the monitor.
+  // One axis name on screen at a time: while a toast, card or question names
+  // the transverse axis, the rotating HUD tag holds that same name.
+  ui.lockAxis = function (name, ms, whileFail) { this._axLock = name; this._axUntil = performance.now() + (ms || 0); this._axFail = !!whileFail; };
+  ui.unlockAxis = function () { this._axLock = null; this._axUntil = 0; this._axFail = false; };
+  ui.axisNow = function (pid) {
+    if (pid !== 'transverse') return C.axisName(pid);
+    if (this._axLock && (performance.now() < this._axUntil || (this._axFail && !$('fail').classList.contains('hidden')))) return this._axLock;
+    this._axLock = null;
+    return C.axisName('transverse');
+  };
   ui.hudDrone = function (level) {
-    const ax = C.axisName('transverse');
+    const ax = this.axisNow('transverse');
     const jam = level.jamT > 0;
     const key = ax + (jam ? '#' : '');
     if (this._ax !== key) { this._ax = key; $('plane-tag').innerHTML = `<b>TRANSVERSE PLANE</b> · <span class="ax">${jam ? ax.replace(/[aeiou]/g, '#') : ax}</span> ⊙`; }

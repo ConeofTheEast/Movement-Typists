@@ -312,8 +312,9 @@
     fx.power = power(save);
     return fx;
   }
-  function calibBonusText(t, c) {
+  function calibBonusText(t, c, name) {
     const pct = (v) => Math.round(v * 100) + '%';
+    if (!(c > 0)) return 'No bonus yet. Answer ' + (name || t) + ' questions to calibrate.';
     switch (t) {
       case 'planes_axes': return '+' + c.toFixed(1) + ' s freeze timer';
       case 'joint_actions': return '×' + (1 + 0.3 * c).toFixed(2) + ' strike damage';
@@ -329,7 +330,7 @@
     const links = ((C().DRONE_UI || {}).workshop || {}).calibLinks || {};
     return topics().map((t) => ({
       topic: t, name: T[t] || t, cal: cal[t], pct: Math.round(cal[t] * 100),
-      attempts: ((save.calib || {})[t] || []).length, link: links[t] || '', bonus: calibBonusText(t, cal[t]),
+      attempts: ((save.calib || {})[t] || []).length, link: links[t] || '', bonus: calibBonusText(t, cal[t], T[t] || t), zero: !(cal[t] > 0),
     }));
   }
 
@@ -593,6 +594,8 @@
   const GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.3 1.5h3.4l.5 2.6c.7.2 1.3.5 1.9.9l2.3-1.4 2.4 2.4-1.4 2.3c.4.6.7 1.2.9 1.9l2.6.5v3.4l-2.6.5c-.2.7-.5 1.3-.9 1.9l1.4 2.3-2.4 2.4-2.3-1.4c-.6.4-1.2.7-1.9.9l-.5 2.6h-3.4l-.5-2.6c-.7-.2-1.3-.5-1.9-.9l-2.3 1.4-2.4-2.4 1.4-2.3c-.4-.6-.7-1.2-.9-1.9l-2.6-.5v-3.4l2.6-.5c.2-.7.5-1.3.9-1.9L3.2 6l2.4-2.4 2.3 1.4c.6-.4 1.2-.7 1.9-.9zM12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>';
   const BOLT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.5 1 4 13.5h6.2L9 23l10-13h-6.3z"/></svg>';
   const DRONE_NAME = { scout: 'GNAT', netter: 'NETTER', diver: 'HORNET', lancer: 'LANCER', tether: 'LEECH', swarm: 'MIDGES', spotter: 'SPOTTER', heavy: 'RAM', crawler: 'SNARE', jammer: 'JAMMER', warden: 'THE WARDEN' };
+  // Size / formation hint under look-alike icons (gnat vs midge pack).
+  const DRONE_SUB = { scout: 'single · fast', swarm: 'pack of 5 · tiny' };
   const SIDE_WORD = { N: 'NORTH', E: 'EAST', S: 'SOUTH', W: 'WEST' };
   const DIFF_WORD = { 1: 'RECALL', 2: 'APPLY', 3: 'ANALYSE' };
 
@@ -945,9 +948,8 @@
         const btn = h('button', { class: 'ws-buy' + (can ? ' can' : ''), disabled: !nx || null, 'aria-disabled': nx && !can ? 'true' : null,
           title: nx && !can ? (W.notEnough || 'Not enough scrap.') : '', 'aria-label': btnTxt + ' ' + t.name + (nx ? ', ' + nx.cost + ' scrap' : ''), onclick: () => uiBuy(d.id) },
         [h('span', { text: btnTxt }), nx ? h('span', { class: 'ws-cost' }, [h('span', { class: 'ws-gear', html: GEAR }), String(nx.cost)]) : null]);
-        const pw = nx ? nx.power : d.levels[2].power;
         const card = h('article', { class: 'ws-card cat-' + d.cat + (own ? ' owned' : '') + (own >= 3 ? ' maxed' : '') + (S.save.loadout[d.id] ? ' active' : ''), 'data-id': d.id }, [
-          h('div', { class: 'ws-card-top' }, [h('span', { class: 'ws-muscle', text: t.muscle }), h('span', { class: 'ws-pw', title: 'Power at ' + (nx ? 'next level' : 'max level') }, [h('span', { class: 'ws-bolt', html: BOLT }), pw + ' PWR'])]),
+          h('div', { class: 'ws-card-top' }, [h('span', { class: 'ws-muscle', text: t.muscle }), powerTag(d, own, nx)]),
           h('h4', { text: t.name }),
           h('p', { class: 'ws-desc', text: t.desc }),
           fxList,
@@ -958,6 +960,17 @@
       });
       p.appendChild(h('section', { class: 'ws-cat cat-' + cat.id }, [h('h4', { class: 'ws-cat-h', text: cat.label }), grid]));
     });
+  }
+  // Card power tag: current level's power and the next level's ("Now ⚡1 → Next ⚡2").
+  function powerTag(d, own, nx) {
+    const now = own ? d.levels[own - 1].power : 0;
+    const kids = [];
+    if (own) kids.push(h('span', { class: 'ws-pw-now' }, ['Now ', h('span', { class: 'ws-bolt', html: BOLT }), String(now)]));
+    if (nx) {
+      if (own) kids.push(h('span', { class: 'ws-pw-arrow', text: '→' }));
+      kids.push(h('span', { class: 'ws-pw-next' }, [own ? 'Next ' : 'Build ', h('span', { class: 'ws-bolt', html: BOLT }), String(nx.power)]));
+    } else kids.push(h('span', { class: 'ws-pw-next', text: 'MAX' }));
+    return h('span', { class: 'ws-pw', title: 'Power used when running in the loadout: ' + (own ? 'now ' + now : 'not built') + (nx ? ', next level ' + nx.power : '') }, kids);
   }
   function uiBuy(id) {
     if (!S) return { ok: false, reason: 'closed' };
@@ -1001,7 +1014,7 @@
       h('div', { class: 'ws-g-txt' }, [
         h('div', { class: 'ws-g-name', text: info.name }),
         h('div', { class: 'ws-g-link', text: info.link }),
-        h('div', { class: 'ws-g-bonus', text: info.bonus }),
+        h('div', { class: 'ws-g-bonus' + (info.zero ? ' zero' : ''), text: info.bonus }),
         h('div', { class: 'ws-g-n', text: info.attempts + '/' + RULES.calibWindow + ' answers' + (info.attempts < RULES.calibFull ? ' · full credit at ' + RULES.calibFull : '') }),
       ]),
     ]);
@@ -1021,7 +1034,7 @@
       }, ['L' + l, h('small', { text: '⚡' + powerOf(d.id, l) })])));
       const row = h('div', { class: 'ws-slot cat-' + d.cat + (act ? ' on' : ''), 'data-id': d.id }, [
         h('button', { class: 'ws-switch', role: 'switch', 'aria-checked': act ? 'true' : 'false', 'aria-label': t.name, onclick: () => uiToggle(d.id) }, [h('i')]),
-        h('div', { class: 'ws-slot-t' }, [h('b', { text: t.name }), h('span', { text: t.muscle })]),
+        h('div', { class: 'ws-slot-t' }, [h('b', { text: t.name }), h('span', {}, [t.muscle, h('em', { class: 'ws-slot-pw' + (act ? ' on' : '') }, act ? [' · L' + act + ' uses ', h('span', { class: 'ws-bolt', html: BOLT }), String(powerOf(d.id, act))] : [' · off'])])]),
         lvBtns,
       ]);
       list.appendChild(row);
@@ -1067,29 +1080,64 @@
   }
 
   // ---------------- intel (pinned side panel) ----------------
+  // Pre-scout intel (KITE not in camp yet): what the last wave sent, plus a
+  // tip for the next wave from the engine's wave table (no answers revealed).
+  function waveInfo(n) {
+    try { const f = SEHS.DroneDefense && SEHS.DroneDefense.waveCfg; return f && n >= 1 ? f(n) : null; } catch (e) { return null; }
+  }
+  function droneRow(d, names) {
+    const type = typeof d === 'string' ? d : d.type;
+    const isNew = !!(d.isNew || d.new);
+    const cv = h('canvas', { width: '48', height: '48', class: 'ws-dicon', 'aria-hidden': 'true' });
+    drawDrone(cv, type);
+    const sub = DRONE_SUB[type];
+    return h('li', { class: (isNew ? 'new ' : '') + 't-' + type }, [cv,
+      h('span', { class: 'ws-dname' }, [String(names[type] || type).toUpperCase(), sub ? h('small', { text: sub }) : null]),
+      d.count != null ? h('b', { text: '×' + d.count }) : null, isNew ? h('em', { text: 'NEW' }) : null]);
+  }
   function renderIntel() {
     const W = S.W, side = S.side;
     side.textContent = '';
     let intel = S.intel;
     if (Array.isArray(intel)) intel = { drones: intel };
     const has = intel && intel.signal !== false && (intel.drones || []).length;
-    side.appendChild(h('div', { class: 'ws-side-h' }, [h('span', { class: 'ws-radar', 'aria-hidden': 'true' }), h('h3', { text: W.intelTitle || 'SCOUT INTEL' }), h('span', { class: 'ws-sub', text: 'WAVE ' + S.wave })]));
+    const names = Object.assign({}, DRONE_NAME, C().DRONE_NAMES || {});
+    side.appendChild(h('div', { class: 'ws-side-h' }, [h('span', { class: 'ws-radar' + (has ? '' : ' off'), 'aria-hidden': 'true' }), h('h3', { text: W.intelTitle || 'SCOUT INTEL' }), h('span', { class: 'ws-sub', text: 'WAVE ' + S.wave })]));
     if (!has) {
-      side.appendChild(h('div', { class: 'ws-nosig' }, [h('div', { class: 'ws-static', 'aria-hidden': 'true' }), h('b', { text: (S.UI.hud || {}).noSignal || 'NO SIGNAL' }), h('p', { text: W.intelNoSignal || '' })]));
+      // no scout: show the last wave's drones and a tip for the next one
+      const seen = intel && (intel.lastWave || intel.seen);
+      let rows = [];
+      if (Array.isArray(seen)) rows = seen;
+      else if (seen && typeof seen === 'object') rows = Object.keys(seen).map((t) => ({ type: t, count: seen[t] }));
+      else { const lw = waveInfo(S.wave - 1); if (lw) rows = lw.types.slice(); }
+      side.appendChild(h('div', { class: 'ws-nosig small' }, [h('div', { class: 'ws-static', 'aria-hidden': 'true' }), h('b', { text: 'SCOUT NOT IN CAMP YET' }), h('p', { text: 'No live scan. Here is what we already know.' })]));
+      if (rows.length) {
+        side.appendChild(h('h4', { class: 'ws-intel-h', text: 'DRONES SEEN LAST WAVE' }));
+        side.appendChild(h('ul', { class: 'ws-drones' }, rows.map((d) => droneRow(d, names))));
+      }
+      const nx = waveInfo(S.wave);
+      const tips = [];
+      if (nx) {
+        if (nx.boss) tips.push([(S.UI.wave || {}).wardenInbound || 'WARDEN INBOUND', 'red']);
+        (nx.newTypes || []).forEach((t) => { if (W.intelNew && W.intelNew[t]) tips.push([W.intelNew[t], '']); });
+        const T = C().DRONE_THREATS || {};
+        const prevC = (waveInfo(S.wave - 1) || { pool: [] }).pool.some((id) => T[id] && T[id].kind === 'contraction');
+        if (!prevC && (nx.pool || []).some((id) => T[id] && T[id].kind === 'contraction')) tips.push([W.intelContraction || 'Expect contraction threats.', 'amber']);
+      }
+      if (tips.length) {
+        side.appendChild(h('h4', { class: 'ws-intel-h', text: 'NEXT WAVE' }));
+        tips.forEach(([t, c]) => side.appendChild(h('p', { class: 'ws-newline ' + c, text: t })));
+      } else if (!rows.length) side.appendChild(h('p', { class: 'ws-newline', text: W.intelNoSignal || 'NO SIGNAL' }));
       renderStatus();
       return;
     }
-    if (intel.warden) side.appendChild(h('div', { class: 'ws-warden', text: (S.UI.wave || {}).wardenInbound || 'WARDEN INBOUND' }));
-    const names = Object.assign({}, DRONE_NAME, C().DRONE_NAMES || {});
+    if (intel.warden) side.appendChild(h('div', { class: 'ws-warden', text: intel.wardenText || (S.UI.wave || {}).wardenInbound || 'WARDEN INBOUND' }));
     const list = h('ul', { class: 'ws-drones' });
     const newLines = [];
     (intel.drones || []).forEach((d) => {
       const type = typeof d === 'string' ? d : d.type;
-      const isNew = !!(d.isNew || d.new);
-      const cv = h('canvas', { width: '48', height: '48', class: 'ws-dicon', 'aria-hidden': 'true' });
-      drawDrone(cv, type);
-      list.appendChild(h('li', { class: isNew ? 'new' : '' }, [cv, h('span', { class: 'ws-dname', text: String(names[type] || type).toUpperCase() }), d.count != null ? h('b', { text: '×' + d.count }) : null, isNew ? h('em', { text: 'NEW' }) : null]));
-      if (isNew && W.intelNew && W.intelNew[type]) newLines.push(W.intelNew[type]);
+      list.appendChild(droneRow(d, names));
+      if ((d.isNew || d.new) && W.intelNew && W.intelNew[type]) newLines.push(W.intelNew[type]);
     });
     side.appendChild(list);
     newLines.forEach((t) => side.appendChild(h('p', { class: 'ws-newline', text: t })));
@@ -1110,7 +1158,8 @@
         svg += '<text x="' + (60 + Math.cos(a) * 60).toFixed(1) + '" y="' + (64 + Math.sin(a) * 60).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="' + (w === 1 ? '#ffb3bd' : '#8fa3b8') + '">' + k + '</text>';
       });
       svg += '<circle cx="60" cy="60" r="5" fill="#56e0ff"/></svg>';
-      side.appendChild(h('div', { class: 'ws-compass' }, [h('span', { html: svg }), h('p', { text: fmt(W.intelSides || 'Most drones from the {side}', { side: top.map((k) => SIDE_WORD[k]).join(' + ') }) })]));
+      const txt = top.length === 4 ? 'Drones from ALL SIDES' : intel.sideText || fmt(W.intelSides || 'Most drones from the {side}', { side: top.map((k) => SIDE_WORD[k]).join(' + ') });
+      side.appendChild(h('div', { class: 'ws-compass' }, [h('span', { html: svg }), h('p', { text: txt })]));
     }
     if (intel.contraction) side.appendChild(h('p', { class: 'ws-newline amber', text: W.intelContraction || 'Expect contraction threats.' }));
     renderStatus();
@@ -1136,7 +1185,18 @@
     const ctx = cv.getContext && cv.getContext('2d');
     if (!ctx) return;
     try {
-      if (SEHS.DroneDefense && typeof SEHS.DroneDefense.drawIcon === 'function' && SEHS.DroneDefense.drawIcon(cv, type)) return;
+      if (SEHS.DroneDefense && typeof SEHS.DroneDefense.drawIcon === 'function') {
+        if (type === 'swarm') {
+          // a pack: three small copies, so midges never look like a single gnat
+          const t = document.createElement('canvas'); t.width = t.height = cv.width;
+          if (SEHS.DroneDefense.drawIcon(t, type)) {
+            const W2 = cv.width, k = 0.52;
+            ctx.clearRect(0, 0, W2, W2);
+            [[0.02, 0.0], [0.46, 0.12], [0.2, 0.46]].forEach(([x, y]) => ctx.drawImage(t, x * W2, y * W2, W2 * k, W2 * k));
+            return;
+          }
+        } else if (SEHS.DroneDefense.drawIcon(cv, type)) return;
+      }
       const A = SEHS.DroneArt;
       if (A && typeof A.draw === 'function') {
         const r = (typeof A.radius === 'function' && A.radius(type)) || 20;

@@ -1001,6 +1001,8 @@
       U.root.appendChild(U.el);
       U.sel = actionByKey(opts.action) ? actionByKey(opts.action).key : (actions()[0] || {}).key;
       if (opts.action) studied(U.sel);
+      // narrow screens stack the detail under the grid: jump straight to it
+      if (opts.action) setTimeout(() => { try { if (U && U.detail && U.detail.getBoundingClientRect().top > window.innerHeight * 0.6) U.detail.scrollIntoView({ block: 'start' }); } catch (e) { /* ignore */ } }, 0);
       setTab(opts.tab && U.panes[opts.tab] ? opts.tab : 'codex');
       startLoop();
       main.tabIndex = -1;
