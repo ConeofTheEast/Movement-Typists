@@ -16,7 +16,24 @@
  *   SEHS.Workshop.effects(save)      -> merged fx object (active loadout +
  *                                       Calibration bonuses), read by the level
  *   SEHS.Workshop.powerBudget(save) / powerUsed(save) / calibration(save)
- *   SEHS.Workshop.onWaveCleared(save, n), addFault(save, idOrTopic), addScrap
+ *   SEHS.Workshop.onWaveCleared(save, n), addFault(save, idOrTopicOrIds), addScrap
+ *
+ * Fault Log spacing (§4.6b, revised 2026-11-04). Spacing runs on its own clock,
+ * `svisit`, which advances only on a workshop visit that follows a newly
+ * cleared wave (save.lifetime.waves went up). A "Workshop first" visit before
+ * retrying a failed wave is a RETRY visit: it can still serve due faults, but
+ * it never advances the clock, so failing a wave cannot compress the spacing
+ * (box 1/2/3 = due after 1/2/4 counted visits). Rule chosen for clearing: a
+ * fault clears only if at least 2 waves have been CLEARED since it was logged
+ * (fault.aw = lifetime.waves when added). A correct box-3 answer before that
+ * keeps it at box 3, due on the next counted visit. (Calendar-day rule not
+ * used: classes replay on the same day and clocks on shared Chromebooks drift.)
+ * open() takes opts.retry (true/false) to override the automatic detection.
+ *
+ * OVERCLOCK (§4.6a, revised): the toggle unlocks once ANY topic's Calibration
+ * is >= 60%; when on, it applies only to items whose topic is >= 60% (snapshot
+ * taken when the visit opens). Other items run untimed at normal scrap and say
+ * why. The toggle's title + a small caption explain the lock.
  *   SEHS.Workshop.debug.answer(true|false|index), next(), tab(name), buy(id),
  *       toggle(id), setLevel(id, l), overclock(on), grant(scrap), launch(), state()
  *
@@ -105,7 +122,7 @@
   // Terminal rules (§4.6a / §4.6b)
   const RULES = {
     perVisit: 6, maxFaultsPerVisit: 2, scrapByDiff: { 1: 10, 2: 18, 3: 30 }, streakStep: 0.2, streakCap: 5,
-    faultClearBonus: 25, overclockMul: 1.5, overclockSecs: 25, seenCooldown: 8, calibWindow: 10,
+    faultClearBonus: 25, overclockMul: 1.5, overclockSecs: 25, overclockCal: 0.6, faultClearWaves: 2, seenCooldown: 8, calibWindow: 10,
     calibFull: 5, optimisedAt: 0.8, budgetCap: 14, faultDueByBox: { 1: 1, 2: 2, 3: 4 }, logCap: 500,
   };
   const topics = () => Object.keys(C().MCQ_TOPICS || {});
@@ -128,8 +145,10 @@
       streak: 0,                // terminal streak, persists across visits until a wrong answer
       upgrades: {},             // id -> owned level 1..3
       loadout: {},              // id -> active level 1..owned
-      faultLog: [],             // [{ id, box 1..3, due: visit, added: visit, last: visit }]
-      visit: 0,                 // workshop visits (incremented on open)
+      faultLog: [],             // [{ id, box 1..3, due: svisit, added: svisit, last: svisit, aw: lifetime.waves when added }]
+      visit: 0,                 // workshop visits (incremented on every open; seenAt cooldown)
+      svisit: 0,                // spacing clock: counted visits only (after a newly cleared wave)
+      svisitWaves: 0,           // lifetime.waves at the last counted visit
       seenAt: {},               // mcqId -> visit last answered
       attempts: {},             // mcqId -> times answered (lifetime)
       calib: {},                // topic -> [1,0,...] last 10 terminal answers
@@ -152,6 +171,8 @@
     s.scrap = Math.max(0, Math.round(num(raw.scrap, 0)));
     s.streak = Math.max(0, num(raw.streak, 0) | 0);
     s.visit = Math.max(0, num(raw.visit, 0) | 0);
+    // older saves kept fault due dates in raw visits: start the clock there
+    s.svisit = Math.max(0, num(raw.svisit, s.visit) | 0);
     if (isObj(raw.upgrades)) for (const id in raw.upgrades) if (DEF[id]) { const l = clamp(num(raw.upgrades[id], 0) | 0, 0, 3); if (l) s.upgrades[id] = l; }
     if (isObj(raw.loadout)) for (const id in raw.loadout) if (s.upgrades[id]) { const l = clamp(num(raw.loadout[id], 0) | 0, 0, s.upgrades[id]); if (l) s.loadout[id] = l; }
     if (Array.isArray(raw.faultLog)) {
@@ -159,7 +180,7 @@
       raw.faultLog.forEach((f) => {
         if (!isObj(f) || typeof f.id !== 'string' || !okQ(f.id) || seen[f.id]) return;
         seen[f.id] = 1;
-        s.faultLog.push({ id: f.id, box: clamp(num(f.box, 1) | 0, 1, 3), due: num(f.due, s.visit + 1) | 0, added: num(f.added, 0) | 0, last: num(f.last, 0) | 0 });
+        s.faultLog.push({ id: f.id, box: clamp(num(f.box, 1) | 0, 1, 3), due: num(f.due, s.svisit + 1) | 0, added: num(f.added, 0) | 0, last: num(f.last, 0) | 0, aw: num(f.aw, -99) | 0 });
       });
     }
     if (isObj(raw.seenAt)) for (const id in raw.seenAt) if (okQ(id)) s.seenAt[id] = num(raw.seenAt[id], 0) | 0;
@@ -172,6 +193,7 @@
     if (Array.isArray(raw.reaskQueue)) s.reaskQueue = raw.reaskQueue.filter((x) => typeof x === 'string');
     if (isObj(raw.threatStats)) s.threatStats = raw.threatStats;
     if (isObj(raw.lifetime)) for (const k in s.lifetime) s.lifetime[k] = num(raw.lifetime[k], 0);
+    s.svisitWaves = Math.max(0, num(raw.svisitWaves, s.lifetime.waves) | 0);
     if (Array.isArray(raw.log)) s.log = raw.log.filter(isObj).slice(-RULES.logCap);
     return s;
   }
@@ -220,7 +242,7 @@
       const n = fresh();
       if (opts && opts.keepLearning) {
         const old = DroneSave.load();
-        ['bestWave', 'faultLog', 'visit', 'seenAt', 'attempts', 'calib', 'threatStats', 'lifetime', 'log'].forEach((k) => { n[k] = old[k]; });
+        ['bestWave', 'faultLog', 'visit', 'svisit', 'svisitWaves', 'seenAt', 'attempts', 'calib', 'threatStats', 'lifetime', 'log'].forEach((k) => { n[k] = old[k]; });
       }
       DroneSave.save(n);
       return n;
@@ -337,7 +359,7 @@
     const used = ctx.used || (ctx.used = new Set());
     // 1. due Fault Log items (max 2 per visit), most overdue first
     if ((ctx.faultsTaken | 0) < RULES.maxFaultsPerVisit) {
-      const due = save.faultLog.filter((f) => f.due <= save.visit && byId[f.id] && !used.has(f.id))
+      const due = save.faultLog.filter((f) => f.due <= save.svisit && byId[f.id] && !used.has(f.id))
         .sort((a, b) => a.due - b.due || a.box - b.box);
       if (due.length) {
         ctx.faultsTaken = (ctx.faultsTaken | 0) + 1;
@@ -424,25 +446,30 @@
     const fi = save.faultLog.findIndex((f) => f.id === q.id);
     if (fi >= 0) {
       const f = save.faultLog[fi];
-      f.last = save.visit;
+      f.last = save.svisit;
       if (correct) {
-        if (f.box >= 3) {
+        const waited = (save.lifetime.waves | 0) - (f.aw | 0);
+        if (f.box >= 3 && waited >= RULES.faultClearWaves) {
           save.faultLog.splice(fi, 1);
           res.faultCleared = true;
           res.scrap += RULES.faultClearBonus;
           save.lifetime.faultsCleared += 1;
+        } else if (f.box >= 3) {
+          // right, but too soon after it was logged: hold at box 3 (§4.6b revised)
+          f.due = save.svisit + 1;
+          res.faultBox = 3; res.faultDue = f.due; res.faultHeld = RULES.faultClearWaves - waited;
         } else {
           f.box += 1;
-          f.due = save.visit + RULES.faultDueByBox[f.box];
+          f.due = save.svisit + RULES.faultDueByBox[f.box];
           res.faultBox = f.box; res.faultDue = f.due;
         }
       } else {
-        f.box = 1; f.due = save.visit + RULES.faultDueByBox[1];
+        f.box = 1; f.due = save.svisit + RULES.faultDueByBox[1];
         res.faultBox = 1; res.faultDue = f.due;
       }
     } else if (!correct) {
-      save.faultLog.push({ id: q.id, box: 1, due: save.visit + RULES.faultDueByBox[1], added: save.visit, last: save.visit });
-      res.faultAdded = true; res.faultBox = 1; res.faultDue = save.visit + 1;
+      save.faultLog.push({ id: q.id, box: 1, due: save.svisit + RULES.faultDueByBox[1], added: save.svisit, last: save.svisit, aw: save.lifetime.waves | 0 });
+      res.faultAdded = true; res.faultBox = 1; res.faultDue = save.svisit + 1;
     }
     save.scrap += res.scrap;
     save.lifetime.scrapEarned += res.scrap;
@@ -459,10 +486,19 @@
     while (save.log.length > RULES.logCap) save.log.shift();
     return res;
   }
-  // Wrong freeze answers in waves add a fault (§4.6b). idOrTopic: an MCQ id or a topic.
+  // Wrong freeze answers in waves add a fault (§4.6b). idOrTopic: an MCQ id
+  // (used directly), an array of MCQ ids (e.g. the items whose `action` tag
+  // matches the missed action: one not already logged is picked), or a topic.
   function addFault(save, idOrTopic, rng) {
     rng = rng || Math.random;
     const byId = bankById();
+    if (Array.isArray(idOrTopic)) {
+      const ok = idOrTopic.filter((x) => typeof x === 'string' && byId[x]);
+      if (!ok.length) return null;
+      const fresh1 = ok.filter((x) => !save.faultLog.some((f) => f.id === x));
+      const pool = fresh1.length ? fresh1 : ok;
+      idOrTopic = pool[Math.floor(rng() * pool.length)];
+    }
     let id = byId[idOrTopic] ? idOrTopic : null;
     if (!id) {
       const inLog = {};
@@ -472,8 +508,8 @@
       id = c[Math.floor(rng() * c.length)].id;
     }
     const ex = save.faultLog.find((f) => f.id === id);
-    if (ex) { ex.box = 1; ex.due = save.visit + 1; return ex; }
-    const f = { id, box: 1, due: save.visit + 1, added: save.visit, last: save.visit };
+    if (ex) { ex.box = 1; ex.due = save.svisit + 1; return ex; }
+    const f = { id, box: 1, due: save.svisit + 1, added: save.svisit, last: save.svisit, aw: (save.lifetime && save.lifetime.waves) | 0 };
     save.faultLog.push(f);
     return f;
   }
@@ -573,6 +609,10 @@
     const save = opts.save || DroneSave.load();
     const wave = Math.max(1, (opts.wave || save.wave || 1) | 0);
     save.visit += 1;
+    // spacing clock: only a visit after a newly cleared wave counts (retry visits don't)
+    const lw = save.lifetime.waves | 0;
+    const counted = opts.retry === true ? false : opts.retry === false ? true : (save.svisit === 0 || lw > (save.svisitWaves | 0));
+    if (counted) { save.svisit += 1; save.svisitWaves = lw; }
     save.wave = wave;
     DroneSave.save(save);
     let reduce = !!opts.reduce;
@@ -594,6 +634,7 @@
       tab: 'terminal', idx: 0, cur: null, phase: 'question', ctx: { wave, used: new Set(), faultsTaken: 0 },
       visit: { scrap: 0, right: 0, wrong: 0, added: 0, cleared: 0, results: [] }, overclock: false,
       shownScrap: save.scrap, qStart: 0, timerLeft: RULES.overclockSecs, raf: 0, lastT: 0, ambient: null, closed: false,
+      counted, cal: calibration(save),
     };
     build(opts);
     S.ambient = snd('workshopAmbient', 0.8);
@@ -645,7 +686,7 @@
     const title = S.wave > 1 ? 'WAVE ' + (S.wave - 1) + ' CLEARED' : 'PRE-FLIGHT CHECK';
     el.appendChild(h('header', { class: 'ws-head' }, [
       h('div', { class: 'ws-brand' }, [
-        h('div', { class: 'ws-kicker', text: (W.title || 'WORKSHOP') + ' · VISIT ' + S.save.visit }),
+        h('div', { class: 'ws-kicker', text: (W.title || 'WORKSHOP') + ' · VISIT ' + S.save.visit + (S.counted ? '' : ' · RETRY'), title: S.counted ? '' : 'Retry visit: the Fault Log spacing clock does not advance until you clear a wave.' }),
         h('h2', { class: 'ws-title', text: opts.title || title }),
       ]),
       nav, scrap,
@@ -690,7 +731,9 @@
     for (let i = 0; i < RULES.streakCap; i++) S.streakSegs.appendChild(h('i'));
     S.streakTxt = h('span', { class: 'ws-streak-t' });
     S.ocInput = h('input', { type: 'checkbox', class: 'ws-oc-in', onchange: (e) => setOverclock(e.target.checked) });
-    S.ocLabel = h('label', { class: 'ws-oc', title: T.overclockDesc || '' }, [S.ocInput, h('span', { class: 'ws-oc-sw', 'aria-hidden': 'true' }), h('span', { class: 'ws-oc-l', text: T.overclock || 'OVERCLOCK' })]);
+    S.ocWhy = h('span', { class: 'ws-oc-why', id: 'ws-oc-why' });
+    S.ocInput.setAttribute('aria-describedby', 'ws-oc-why');
+    S.ocLabel = h('label', { class: 'ws-oc', title: T.overclockDesc || '' }, [S.ocInput, h('span', { class: 'ws-oc-sw', 'aria-hidden': 'true' }), h('span', { class: 'ws-oc-l' }, [T.overclock || 'OVERCLOCK', S.ocWhy])]);
     p.appendChild(h('div', { class: 'ws-term-top' }, [
       h('div', { class: 'ws-term-title' }, [h('h3', { text: T.title || 'EXAM TERMINAL' }), h('p', { class: 'ws-sub', text: T.subtitle || '' })]),
       S.dots,
@@ -716,21 +759,28 @@
   function renderTerminal() {
     const T = S.T, wrap = S.qWrap;
     wrap.textContent = '';
+    const oc = ocInfo();
     S.ocInput.checked = S.overclock;
-    S.ocInput.disabled = S.idx > 0 || S.phase !== 'question';
+    S.ocInput.disabled = !oc.any || S.idx > 0 || S.phase !== 'question';
     S.ocLabel.classList.toggle('on', S.overclock);
     S.ocLabel.classList.toggle('locked', S.ocInput.disabled);
+    S.ocLabel.classList.toggle('gated', !oc.any);
+    S.ocLabel.title = oc.any ? (S.T.overclockDesc || '') + ' Works on topics at ' + oc.need + '%+ calibration: ' + oc.open.join(', ') + '.' : oc.why;
+    S.ocWhy.textContent = oc.any ? '' : ' 🔒 ' + oc.need + '% CAL';
     renderDots();
     renderStreak();
     if (S.phase === 'summary') { renderSummary(wrap); return; }
     const it = S.cur, q = it.q;
     const topicName = (C().MCQ_TOPICS || {})[q.topic] || q.topic;
-    const worth = scrapFor(q.difficulty, S.save.streak, S.overclock);
+    const ocOn = ocActive();
+    const worth = scrapFor(q.difficulty, S.save.streak, ocOn);
+    const ocOff = S.overclock && !ocOn;
     const meta = h('div', { class: 'ws-q-meta' }, [
       h('span', { class: 'ws-q-num', text: 'QUESTION ' + (S.idx + 1) + ' / ' + RULES.perVisit }),
       h('span', { class: 'ws-topic', text: topicName }),
       h('span', { class: 'ws-diff d' + q.difficulty, title: 'Difficulty ' + q.difficulty }, [h('i'), h('i'), h('i'), h('span', { text: DIFF_WORD[q.difficulty] || '' })]),
       it.fault ? h('span', { class: 'ws-fault-tag', text: (T.faultTag || 'FAULT LOG') + ' · BOX ' + it.fault.box }) : null,
+      ocOff ? h('span', { class: 'ws-oc-off', text: 'OVERCLOCK OFF: ' + topicName + ' ' + Math.round((S.cal[q.topic] || 0) * 100) + '% < ' + Math.round(RULES.overclockCal * 100) + '%' }) : null,
       h('span', { class: 'ws-worth' }, [h('span', { class: 'ws-gear', html: GEAR }), '+' + worth]),
     ]);
     const letters = T.letters || ['A', 'B', 'C', 'D'];
@@ -743,7 +793,7 @@
       meta,
       h('p', { class: 'ws-stem', id: 'ws-stem' }, [h('b', { text: (S.idx + 1) + '.' }), h('span', { text: q.stem })]),
       h('div', { class: 'ws-opts', role: 'group', 'aria-label': 'Options' }, S.optBtns),
-      S.overclock ? h('div', { class: 'ws-qtimer' }, [S.timerFill, S.timerTxt]) : null,
+      ocOn ? h('div', { class: 'ws-qtimer' }, [S.timerFill, S.timerTxt]) : null,
       h('p', { class: 'ws-hint', text: 'Click an option, or press 1–4 / A–D.' }),
       S.stamp,
     ]);
@@ -772,7 +822,8 @@
     if (!S || S.phase !== 'question' || !S.cur) return null;
     const T = S.T, it = S.cur;
     const rt = performance.now() - S.qStart;
-    const res = answerItem(S.save, it, i, { overclock: S.overclock, rtMs: rt, wave: S.wave });
+    const ocOn = ocActive();
+    const res = answerItem(S.save, it, i, { overclock: ocOn, rtMs: rt, wave: S.wave });
     S.phase = 'feedback';
     S.visit.results[S.idx] = res;
     S.visit.scrap += res.scrap;
@@ -793,14 +844,15 @@
     const head = h('div', { class: 'ws-fb-head ' + (res.correct ? 'ok' : 'bad') }, [
       h('span', { class: 'ws-verdict', text: res.correct ? (T.correct || 'CORRECT') : res.timeout ? 'TIME UP' : (T.wrong || 'INCORRECT') }),
       res.correct ? h('span', { class: 'ws-gain' }, [h('span', { class: 'ws-gear', html: GEAR }), fmt(T.scrapEarned || '+{n} SCRAP', { n: res.scrap }),
-        res.mult > 1 ? h('small', { text: ' ×' + res.mult.toFixed(1) + ' streak' }) : null, S.overclock ? h('small', { text: ' ×1.5 overclock' }) : null]) :
+        res.mult > 1 ? h('small', { text: ' ×' + res.mult.toFixed(1) + ' streak' }) : null, ocOn ? h('small', { text: ' ×1.5 overclock' }) : null]) :
         h('span', { class: 'ws-correct-was', text: 'Correct answer: ' + letters[it.answer] + '. ' + it.options[it.answer] }),
     ]);
     const body = [head, h('div', { class: 'ws-fb-row' }, [h('div', { class: 'ws-fb-l', text: T.explainLabel || 'Explanation' }), h('p', { text: it.q.explain })])];
     if (!res.correct && i >= 0 && it.whyWrong[i]) body.push(h('div', { class: 'ws-fb-row why' }, [h('div', { class: 'ws-fb-l', text: (T.whyWrongLabel || 'Why your answer is wrong') + ' (' + letters[i] + ')' }), h('p', { text: it.whyWrong[i] })]));
     if (res.faultAdded) body.push(h('div', { class: 'ws-fb-note', text: T.faultAdded || 'Added to the Fault Log.' }));
-    else if (!res.correct && it.fault) body.push(h('div', { class: 'ws-fb-note', text: 'Back to box 1 of the Fault Log. It returns next visit.' }));
-    else if (res.correct && it.fault && !res.faultCleared) body.push(h('div', { class: 'ws-fb-note ok', text: 'Fault Log box ' + res.faultBox + ' of 3. It returns in ' + RULES.faultDueByBox[res.faultBox] + ' visits.' }));
+    else if (!res.correct && it.fault) body.push(h('div', { class: 'ws-fb-note', text: 'Back to box 1 of the Fault Log. It returns after your next cleared wave.' }));
+    else if (res.correct && it.fault && res.faultHeld) body.push(h('div', { class: 'ws-fb-note ok', text: 'Right! Fault Log box 3 of 3. It clears after ' + res.faultHeld + ' more cleared wave' + (res.faultHeld === 1 ? '' : 's') + ', so it comes back once more.' }));
+    else if (res.correct && it.fault && !res.faultCleared) body.push(h('div', { class: 'ws-fb-note ok', text: 'Fault Log box ' + res.faultBox + ' of 3. It returns after ' + RULES.faultDueByBox[res.faultBox] + ' more cleared wave' + (RULES.faultDueByBox[res.faultBox] === 1 ? '' : 's') + '.' }));
     const last = S.idx + 1 >= RULES.perVisit;
     S.nextBtn = h('button', { class: 'ws-next', onclick: () => nextQuestion(false) }, [last ? 'Visit summary' : 'Next question', h('kbd', { text: 'Enter' })]);
     body.push(h('div', { class: 'ws-fb-foot' }, [S.nextBtn]));
@@ -843,8 +895,25 @@
     renderTabs();
   }
 
+  // OVERCLOCK gate: per topic, Calibration >= 60% (snapshot at visit open)
+  function ocInfo() {
+    const need = Math.round(RULES.overclockCal * 100), T = C().MCQ_TOPICS || {};
+    const cal = (S && S.cal) || {};
+    const ks = Object.keys(cal);
+    const open = ks.filter((k) => cal[k] >= RULES.overclockCal - 1e-9).map((k) => T[k] || k);
+    let best = null;
+    ks.forEach((k) => { if (!best || cal[k] > cal[best]) best = k; });
+    const why = 'OVERCLOCK is locked: it unlocks for a topic once its Calibration reaches ' + need + '%.' +
+      (best ? ' Your best is ' + (T[best] || best) + ' at ' + Math.round(cal[best] * 100) + '%.' : '') + ' Answer more terminal questions to raise it.';
+    return { any: open.length > 0, open, need, why };
+  }
+  function ocActive() {
+    if (!S || !S.overclock || !S.cur) return false;
+    return (S.cal[S.cur.q.topic] || 0) >= RULES.overclockCal - 1e-9;
+  }
   function setOverclock(on) {
     if (!S || S.idx > 0 || S.phase !== 'question') return false;
+    if (on && !ocInfo().any) { flashMsg(ocInfo().why); return false; }
     S.overclock = !!on;
     S.timerLeft = RULES.overclockSecs;
     S.qStart = performance.now();
@@ -1051,7 +1120,7 @@
     if (!S.statusEl) S.statusEl = h('div', { class: 'ws-status' });
     const el = S.statusEl, sv = S.save, T = S.T;
     el.textContent = '';
-    const due = sv.faultLog.filter((f) => f.due <= sv.visit + 1).length;
+    const due = sv.faultLog.filter((f) => f.due <= sv.svisit + 1).length;
     const hw = sv.highestWaveCleared | 0, b = baseBudget(sv);
     let step = null;
     if (b < RULES.budgetCap) { for (let k = hw + 1; k < hw + 6; k++) if (baseBudget({ highestWaveCleared: k }) > b) { step = k; break; } }
@@ -1212,7 +1281,7 @@
       S.scrapEl.textContent = String(S.shownScrap);
     }
     // overclock timer (runs only while the terminal tab is visible)
-    if (S.overclock && S.phase === 'question' && S.tab === 'terminal' && S.timerFill) {
+    if (S.overclock && S.phase === 'question' && S.tab === 'terminal' && S.timerFill && ocActive()) {
       S.timerLeft = Math.max(0, S.timerLeft - dt);
       S.timerFill.style.width = (S.timerLeft / RULES.overclockSecs * 100).toFixed(2) + '%';
       S.timerTxt.textContent = Math.ceil(S.timerLeft) + ' s';
@@ -1287,7 +1356,7 @@
     state() {
       if (!S) return { open: false };
       return {
-        open: true, tab: S.tab, phase: S.phase, index: S.idx, wave: S.wave, overclock: S.overclock,
+        open: true, tab: S.tab, phase: S.phase, index: S.idx, wave: S.wave, overclock: S.overclock, overclockActive: ocActive(), overclockGate: ocInfo(), countedVisit: S.counted,
         current: S.cur ? { id: S.cur.id, topic: S.cur.q.topic, difficulty: S.cur.q.difficulty, answer: S.cur.answer, options: S.cur.options.slice(), fault: S.cur.fault ? Object.assign({}, S.cur.fault) : null } : null,
         visit: JSON.parse(JSON.stringify(S.visit)), power: power(S.save), effects: effects(S.save),
         save: JSON.parse(JSON.stringify(S.save)), persistent: DroneSave.persistent,
