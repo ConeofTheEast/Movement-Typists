@@ -19,6 +19,11 @@
         <button id="pause-btn" title="Pause (P)">❚❚</button>
       </div>
       <div id="plane-tag"><b>SAGITTAL PLANE</b> · frontal axis ⊙</div>
+      <div id="energy" role="status" aria-label="Energy">
+        <span class="en-lbl">ENERGY</span>
+        <div id="energy-cells"><i></i><i></i><i></i><i></i><i></i></div>
+        <span id="energy-txt">5/5</span>
+      </div>
       <div id="monitor">
         <h4>MUSCLE MONITOR</h4>
         <ul id="monitor-list"></ul>
@@ -81,11 +86,12 @@
     <!-- Fail -->
     <div id="fail" class="screen hidden">
       <div class="panel">
-        <div class="kicker red">ANDROID LOST</div>
+        <div class="kicker red" id="f-kicker">ANDROID LOST</div>
         <h2 id="f-head"></h2>
         <p class="you">You chose: <b id="f-choice"></b></p>
         <p id="f-explain"></p>
         <div class="correct"><div class="kicker green">CORRECT RESPONSE</div><p id="f-correct"></p></div>
+        <p id="f-cost"></p>
         <div class="row">
           <button id="btn-fail-menu" class="ghost">Menu</button>
           <button id="btn-retry" class="primary">Reboot at this hazard (R)</button>

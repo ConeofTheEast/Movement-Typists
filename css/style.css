@@ -184,3 +184,26 @@ table.mtable th { color: var(--amber); font: 700 0.75em ui-monospace, monospace;
 table.mtable tr.click { cursor: pointer; }
 table.mtable tr.click:hover, table.mtable tr.active { background: #14283b; }
 ul.play li { margin-bottom: 0.45em; line-height: 1.45; }
+
+/* ---------- energy bar (hybrid damage system) ---------- */
+#energy { position: absolute; top: 4.4em; left: 1.2em; display: flex; align-items: center; gap: 0.5em; font: 700 0.72em ui-monospace, monospace; letter-spacing: 0.1em; color: #bfefff; background: rgba(5,12,18,0.6); padding: 0.3em 0.6em; border-left: 3px solid var(--cyan); border-radius: 0 0.3em 0.3em 0; }
+#energy-cells { display: flex; gap: 0.25em; }
+#energy-cells i { display: block; width: 1.5em; height: 0.85em; border-radius: 0.15em; background: var(--cyan); box-shadow: 0 0 0.5em rgba(86,224,255,0.55); transition: background 0.25s, box-shadow 0.25s; }
+#energy-cells i.off { background: #16222d; box-shadow: inset 0 0 0 1px #2c3d4e; }
+#energy-txt { min-width: 2.6em; }
+#energy.loss { animation: en-loss 0.8s ease-out; }
+#energy.gain { animation: en-gain 0.8s ease-out; }
+@keyframes en-loss { 0%, 40% { background: rgba(255,40,70,0.55); border-left-color: var(--red); } 100% { background: rgba(5,12,18,0.6); } }
+@keyframes en-gain { 0%, 40% { background: rgba(77,255,160,0.45); border-left-color: var(--green); } 100% { background: rgba(5,12,18,0.6); } }
+@media (prefers-reduced-motion: reduce) { #energy.loss, #energy.gain { animation-duration: 0.01s; } }
+
+/* decision panel low and to the right (blast door: keep hands, knees and door edge visible) */
+#decision.right { left: auto; right: 1.2em; transform: none; width: 34em; animation: rise-r 0.25s ease-out; }
+@keyframes rise-r { from { transform: translateY(1em); opacity: 0; } to { transform: none; opacity: 1; } }
+#decision.right #d-options { grid-template-columns: repeat(2, 1fr); }
+
+/* fail card variants */
+#f-cost { margin: 0.8em 0 0; font: 700 0.85em ui-monospace, monospace; color: #ffb3bd; }
+#fail.partial .panel { border-color: #8a6a1e; }
+#fail.partial #f-cost, #fail.partial #f-kicker { color: var(--amber); }
+#fail.shutdown .panel { border-color: #3c4a5a; }

@@ -45,7 +45,7 @@
     hide(id) { $(id).classList.add('hidden'); },
 
     showDecision(d) {
-      $('d-title').textContent = d.title + (d.stages > 1 ? `: STEP ${d.stage + 1}/${d.stages}` : '');
+      $('d-title').textContent = d.title + (d.stages > 1 ? `: STEP ${d.stage + 1}/${d.stages}` : '') + (d.reask ? ' · TRY AGAIN' : '');
       $('d-kind').textContent = d.kind === 'movement' ? 'CHOOSE THE MOVEMENT' : 'CHOOSE THE CONTRACTION';
       $('d-prompt').textContent = d.prompt;
       const box = $('d-options');
@@ -58,6 +58,8 @@
         box.appendChild(b);
       });
       this.setTimer(1, 0);
+      // the door panel sits low and to the right so the hands, knees and door edge stay visible
+      $('decision').classList.toggle('right', d.side === 'right');
       this.show('decision');
       $('decision').classList.remove('urgent');
     },
@@ -89,21 +91,46 @@
       const con = C.CONTRACTIONS[s.contraction];
       const pl = C.PLANES.sagittal;
       $('f-head').textContent = info.headline;
-      $('f-choice').textContent = info.choice;
+      // `as` in content.js: which animation was acted out (e.g. Isotonic is shown as Concentric)
+      $('f-choice').textContent = info.choice + (info.shownAs ? ` (shown as ${info.shownAs})` : '');
       $('f-explain').textContent = info.explain;
       const names = s.agonists.map((id) => C.MUSCLES[id].name).join(', ');
       $('f-correct').innerHTML = `<b>${st.correct}</b>: ${s.detail}${s.deeper ? `<br><span class="dim">${s.deeper}</span>` : ''}<br><span class="dim">${st.kind === 'movement' ? `${pl.name} · axis: ${C.axisAllNames('sagittal')}` : con.def}</span><br><span class="chip" style="--c:${con.color}">${con.letter}</span> ${names}: ${C.contractionLabel(s.contraction).toLowerCase()}`;
       $('fail').classList.toggle('plane', info.kind === 'plane');
-      setTimeout(() => this.show('fail'), 350);
+      // hybrid damage system: fatal -> checkpoint; partial -> -1 energy, same question again
+      const fail = $('fail');
+      fail.classList.toggle('partial', !info.fatal && !info.shutdown);
+      fail.classList.toggle('shutdown', !!info.shutdown);
+      const en = info.energy != null ? info.energy : 0;
+      if (info.shutdown) {
+        $('f-kicker').textContent = 'POWER FAILURE · ENERGY 0/5';
+        $('f-cost').textContent = 'Energy ran out, so the android shut down. Reboot at this hazard with energy refilled to 5/5.';
+        $('btn-retry').textContent = 'Reboot at checkpoint (R)';
+      } else if (info.fatal) {
+        $('f-kicker').textContent = 'ANDROID DESTROYED · FATAL';
+        $('f-cost').textContent = `Fatal: reboot at this hazard (checkpoint). Energy unchanged: ${en}/5.`;
+        $('btn-retry').textContent = 'Reboot at this hazard (R)';
+      } else {
+        $('f-kicker').textContent = info.kind === 'plane' ? 'MALFUNCTION · −1 ENERGY' : 'PART DAMAGED · −1 ENERGY';
+        $('f-cost').textContent = `−1 energy · try again. Energy ${en}/5. The same question comes back.`;
+        $('btn-retry').textContent = 'Try again (R)';
+      }
+      clearTimeout(this._ft);
+      this._ft = setTimeout(() => this.show('fail'), 350);
     },
 
     showWin(stats) {
       const acc = stats.decisions ? Math.round((stats.correct / stats.decisions) * 100) : 0;
+      const first = stats.firstTries ? Math.round((stats.firstTryCorrect / stats.firstTries) * 100) : 0;
       $('w-stats').innerHTML = `
-        <div><b>${acc}%</b><span>accuracy (incl. retries)</span></div>
-        <div><b>${stats.correct}/${stats.decisions}</b><span>decisions correct</span></div>
-        <div><b>${stats.best}</b><span>best streak</span></div>
-        <div><b>${stats.reboots}</b><span>reboots</span></div>`;
+        <div><b>${first}%</b><span>first-try accuracy</span></div>
+        <div><b>${acc}%</b><span>accuracy (incl. re-asks)</span></div>
+        <div><b>${stats.energyLeft}/5</b><span>energy remaining</span></div>
+        <div><b>${stats.friendsSaved}</b><span>friends saved</span></div>
+        <div><b>${stats.partials}</b><span>partial hits taken</span></div>
+        <div><b>${stats.shutdowns}</b><span>shutdowns</span></div>
+        <div><b>${stats.reboots}</b><span>reboots</span></div>
+        <div><b>${stats.best}</b><span>best streak</span></div>`;
       const errs = [];
       if (stats.plane) errs.push(`<li><b>${stats.plane}</b> plane error(s): picked a frontal/transverse movement. Review: sagittal = flexion/extension about the frontal axis.</li>`);
       if (stats.wrongSagittal) errs.push(`<li><b>${stats.wrongSagittal}</b> flexion/extension mix-up(s). Review: flexion decreases the joint angle, extension increases it.</li>`);
@@ -114,17 +141,33 @@
       game.state = 'won';
     },
 
+    // Energy bar: 5 cyan cells, lost cells dark, flash on change.
+    energy(n) {
+      if (this._en === n) return;
+      const prev = this._en;
+      this._en = n;
+      const cells = $('energy-cells').children;
+      for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('off', i >= n);
+      $('energy-txt').textContent = `${n}/5`;
+      if (prev == null) return;
+      const box = $('energy');
+      box.classList.remove('gain', 'loss');
+      void box.offsetWidth; // restart the CSS animation
+      box.classList.add(n > prev ? 'gain' : 'loss');
+      clearTimeout(this._et);
+      this._et = setTimeout(() => box.classList.remove('gain', 'loss'), 900);
+    },
+
     hud(level) {
       const p = Math.min(1, Math.max(0, level.scrollX / level.exitX));
       $('prog-fill').style.width = p * 100 + '%';
       const s = level.stats;
       const ax = C.axisName('sagittal');
       if (this._ax !== ax) { this._ax = ax; $('plane-tag').innerHTML = `<b>SAGITTAL PLANE</b> · <span class="ax">${ax}</span> ⊙`; }
+      this.energy(level.energy);
       $('hud-stats').innerHTML = `<span>HAZARD <b>${Math.min(level.cur + 1, level.obs.length)}/${level.obs.length}</b></span><span>CORRECT <b>${s.correct}</b></span><span>STREAK <b>${s.streak}</b></span>`;
       const list = $('monitor-list');
-      const jam = level.mode === 'decide' && level.decision && level.decision.st.kind === 'contraction';
-      const rideJam = level.mode === 'ride' && level.obs[level.cur] && level.obs[level.cur].stage === 1;
-      if (jam || rideJam) { list.innerHTML = '<li class="jam">SENSORS JAMMED: YOU DECIDE</li>'; return; }
+      if (level.jammed()) { list.innerHTML = `<li class="jam">${level.mode === 'decide' ? 'SENSORS JAMMED: YOU DECIDE' : 'SENSORS JAMMED'}</li>`; return; }
       const act = level.android.activeList(0.25).slice(0, 6);
       list.innerHTML = act.length
         ? act.map((m) => {
@@ -186,12 +229,15 @@
     Audio.init();
     ui.hide('tutorial'); ui.hide('fail'); ui.hide('win'); ui.hide('menu');
     game.level = new SEHS.SagittalLevel(game);
+    ui._en = null;
+    ui.energy(game.level.energy);
     ui.show('hud');
     game.state = 'play';
     game.paused = false;
   }
 
   function toMenu() {
+    clearTimeout(ui._ft); // a pending fail card must not pop up over the menu
     ['fail', 'win', 'pause', 'hud', 'decision', 'toast', 'tutorial'].forEach((id) => ui.hide(id));
     game.level = new SEHS.SagittalLevel(game);
     game.level.setAttract(true);
@@ -212,7 +258,14 @@
     game.state = 'briefing';
     tutorial.show('sagittal', { preplay: false, onClose: () => { game.state = 'play'; ui.show('pause'); } });
   });
-  $('btn-retry').addEventListener('click', () => { ui.hide('fail'); game.level.reboot(); game.state = 'play'; });
+  // Fail-card action: fatal / shutdown -> checkpoint reboot; partial -> rewind and re-ask.
+  function retry() {
+    if ($('fail').classList.contains('hidden')) return;
+    ui.hide('fail');
+    game.level.retry();
+    game.state = 'play';
+  }
+  $('btn-retry').addEventListener('click', retry);
   $('btn-fail-menu').addEventListener('click', toMenu);
   $('btn-again').addEventListener('click', startLevel);
   $('btn-win-menu').addEventListener('click', toMenu);
@@ -233,7 +286,7 @@
     if (e.key === 'l' || e.key === 'L') { settings.labels = !settings.labels; $('opt-labels').checked = settings.labels; saveSettings(); }
     if (e.key === 'm' || e.key === 'M') { settings.sound = !settings.sound; $('opt-sound').checked = settings.sound; Audio.setMuted(!settings.sound); saveSettings(); }
     if (e.key === 'Enter' && game.state === 'menu') { Audio.init(); openTutorial('sagittal', true); }
-    if ((e.key === 'r' || e.key === 'R') && !$('fail').classList.contains('hidden')) $('btn-retry').click();
+    if ((e.key === 'r' || e.key === 'R' || e.key === 'Enter') && !$('fail').classList.contains('hidden')) { e.preventDefault(); retry(); }
   });
 
   // ---------------- loop ----------------
